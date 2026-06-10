@@ -225,92 +225,40 @@ const BadgesView: React.FC<BadgesViewProps> = ({ receipts, spendingGoal, linkedP
                 className="ios-card" 
                 style={{
                   display: 'flex',
-                  alignItems: 'center',
-                  gap: '14px',
-                  padding: '16px',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  padding: '14px 16px',
                   margin: 0,
                   opacity: badge.isUnlocked ? 1 : 0.6,
                   backgroundColor: badge.isUnlocked ? '#FFFFFF' : '#FAFAFC',
                   border: badge.isUnlocked ? '1px solid rgba(0,0,0,0.03)' : '1px dashed var(--ios-border)',
                   transition: 'all 0.3s ease',
-                  position: 'relative'
                 }}
               >
-                {/* バッジ立体風アイコン */}
-                <div style={{
-                  width: '52px',
-                  height: '52px',
-                  borderRadius: '50%',
-                  background: badge.isUnlocked ? badge.gradient : '#E5E5EA',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '26px',
-                  boxShadow: badge.isUnlocked ? `0 6px 12px ${badge.color}35` : 'none',
-                  flexShrink: 0,
-                  border: badge.isUnlocked ? 'none' : '1px solid #D1D1D6',
-                  position: 'relative'
-                }}>
-                  {!badge.isUnlocked && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '-4px',
-                      right: '-4px',
-                      backgroundColor: '#8E8E93',
-                      color: '#FFFFFF',
-                      width: '16px',
-                      height: '16px',
-                      borderRadius: '50%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}>
-                      <Lock size={10} />
-                    </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {badge.isUnlocked ? (
+                    <CheckCircle2 size={16} color="var(--ios-primary)" strokeWidth={3} />
+                  ) : (
+                    <Lock size={16} color="var(--ios-gray-dark)" />
                   )}
-                  {badge.icon}
+                  <span style={{ fontSize: '14px', fontWeight: '800', color: badge.isUnlocked ? 'var(--ios-text-main)' : 'var(--ios-text-secondary)' }}>
+                    {badge.name}
+                  </span>
                 </div>
-
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '14px', fontWeight: '800', color: badge.isUnlocked ? 'var(--ios-text-main)' : 'var(--ios-text-secondary)' }}>
-                      {badge.name}
-                    </span>
-                    {badge.isUnlocked && (
-                      <CheckCircle2 size={14} color="var(--ios-primary)" strokeWidth={3} />
-                    )}
-                  </div>
-                  <p style={{ fontSize: '11px', color: 'var(--ios-text-secondary)', margin: '4px 0 0 0', lineHeight: '1.4' }}>
-                    {badge.desc}
-                  </p>
-                  <div style={{ 
-                    fontSize: '10px', 
-                    color: badge.isUnlocked ? '#1B9A5E' : 'var(--ios-text-secondary)', 
-                    marginTop: '6px', 
-                    fontWeight: '600',
-                    backgroundColor: badge.isUnlocked ? 'var(--ios-primary-light)' : '#E5E5EA40',
-                    border: badge.isUnlocked ? '1px solid rgba(52, 199, 89, 0.15)' : '1px solid var(--ios-border)',
-                    padding: '3px 8px',
-                    borderRadius: '6px',
-                    display: 'inline-block'
-                  }}>
-                    獲得条件: {badge.conditionDesc}
-                  </div>
+                
+                <div style={{ 
+                  fontSize: '10px', 
+                  color: badge.isUnlocked ? '#1B9A5E' : 'var(--ios-text-secondary)', 
+                  fontWeight: '600',
+                  backgroundColor: badge.isUnlocked ? 'var(--ios-primary-light)' : '#E5E5EA40',
+                  border: badge.isUnlocked ? '1px solid rgba(52, 199, 89, 0.15)' : '1px solid var(--ios-border)',
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  display: 'inline-block',
+                  alignSelf: 'flex-start'
+                }}>
+                  獲得条件: {badge.conditionDesc}
                 </div>
-
-                {badge.isUnlocked && badge.unlockedDate && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '10px',
-                    right: '12px',
-                    fontSize: '9px',
-                    color: 'var(--ios-text-secondary)',
-                    fontFamily: 'Outfit',
-                    fontWeight: '600'
-                  }}>
-                    {badge.unlockedDate} 獲得
-                  </div>
-                )}
               </div>
             );
           })
