@@ -29,4 +29,12 @@ export interface Streak {
   lastConviniDate: string | null;
 }
 
+export interface UserBadge {
+  id: string;
+  user_id: string;
+  badge_key: string;
+  unlocked_at: string;
+}
+
+
 

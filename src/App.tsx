@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { ActiveTab, Receipt, SpendingGoal, SavingsGoal, Streak } from './types';
+import type { ActiveTab, Receipt, SpendingGoal, SavingsGoal, Streak, UserBadge } from './types';
 import TabBar from './components/TabBar';
 import HomeView from './components/HomeView';
 import ScanView from './components/ScanView';
@@ -27,9 +27,19 @@ function App() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   // v2追加のステート
-  const [spendingGoal, setSpendingGoal] = useState<SpendingGoal>({
-    monthlyAmountLimit: 10000,
-    monthlyCountLimit: 12
+  const [spendingGoal, setSpendingGoal] = useState<SpendingGoal>(() => {
+    const savedSpending = localStorage.getItem('cobaco_spending_goal');
+    if (savedSpending) {
+      try {
+        return JSON.parse(savedSpending);
+      } catch (e) {
+        console.error('Failed to parse spending goal', e);
+      }
+    }
+    return {
+      monthlyAmountLimit: 10000,
+      monthlyCountLimit: 12
+    };
   });
   
   // 欲しいもの目標 (Supabaseで永続化)
@@ -42,7 +52,23 @@ function App() {
   const [streak, setStreak] = useState<Streak>({ currentStreak: 0, bestStreak: 0, lastConviniDate: null });
   const [activeMilestone, setActiveMilestone] = useState<{ days: number; message: string } | null>(null);
 
-  const [linkedPayments, setLinkedPayments] = useState<string[]>([]);
+  const [linkedPayments, setLinkedPayments] = useState<string[]>(() => {
+    const savedPayments = localStorage.getItem('cobaco_linked_payments');
+    if (savedPayments) {
+      try {
+        return JSON.parse(savedPayments);
+      } catch (e) {
+        console.error('Failed to parse linked payments', e);
+      }
+    }
+    return [];
+  });
+
+  // バッジ関連のステート
+  const [unlockedBadges, setUnlockedBadges] = useState<UserBadge[]>([]);
+  const [badgeToasts, setBadgeToasts] = useState<{ id: string; badgeName: string }[]>([]);
+
+
 
   // ログインセッションの監視
   useEffect(() => {
@@ -107,9 +133,139 @@ function App() {
     }
   };
 
-  // ストリーク情報の取得とSupabase同期
-  const fetchAndSyncStreak = async (currentReceipts: Receipt[]) => {
+  // トースト通知を表示する関数
+  const showBadgeToast = (badgeName: string) => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setBadgeToasts(prev => [...prev, { id, badgeName }]);
+    setTimeout(() => {
+      setBadgeToasts(prev => prev.filter(t => t.id !== id));
+    }, 3200); // 3.2秒後に消去 (フェードアウト完了後)
+  };
+
+  // Supabaseから解除済みバッジ一覧を取得する
+  const fetchUnlockedBadges = async (): Promise<UserBadge[]> => {
+    if (!session) return [];
+    try {
+      const { data, error } = await supabase
+        .from('badges')
+        .select('*')
+        .eq('user_id', session.user.id);
+
+      if (error) throw error;
+      setUnlockedBadges(data || []);
+      return data || [];
+    } catch (e) {
+      console.error('Failed to fetch unlocked badges from Supabase', e);
+      return [];
+    }
+  };
+
+  // 全バッジの解除条件をチェックして同期・トースト表示を行う
+  const checkAndUnlockBadges = async (
+    currentReceipts: Receipt[],
+    currentStreak: number,
+    currentSpendingGoal: SpendingGoal,
+    currentLinkedPayments: string[],
+    existingBadges: UserBadge[]
+  ) => {
     if (!session) return;
+
+    // 今月の定義は 2026-05
+    const thisMonthReceipts = currentReceipts.filter(r => r.date.startsWith('2026-05'));
+    const currentAmount = thisMonthReceipts.reduce((sum, r) => sum + r.amount, 0);
+    const currentCount = thisMonthReceipts.length;
+
+    // 衝動買いスコアの計算
+    const impulseCount = thisMonthReceipts.filter(r => r.isImpulse).length;
+    const lateNightCount = thisMonthReceipts.filter(r => {
+      const hour = new Date(r.date).getHours();
+      return hour >= 22 || hour < 5;
+    }).length;
+
+    let impulseScore = 0;
+    if (currentCount > 0) {
+      const ratioScore = (impulseCount / currentCount) * 80;
+      const penaltyScore = Math.min(lateNightCount * 10, 20);
+      impulseScore = Math.min(Math.round(ratioScore + penaltyScore), 100);
+    }
+
+    // 各バッジの獲得条件を定義
+    const badgeChecks = [
+      {
+        key: 'first_scan',
+        name: '初回スキャン達成',
+        isUnlocked: currentReceipts.length >= 1
+      },
+      {
+        key: 'first_goal_achieved',
+        name: '初回目標達成',
+        isUnlocked: currentReceipts.length >= 1 && currentAmount <= currentSpendingGoal.monthlyAmountLimit && currentCount <= currentSpendingGoal.monthlyCountLimit
+      },
+      {
+        key: 'streak_3',
+        name: 'コンビニ断ち3日達成',
+        isUnlocked: currentStreak >= 3
+      },
+      {
+        key: 'streak_7',
+        name: '7日連続達成',
+        isUnlocked: currentStreak >= 7
+      },
+      {
+        key: 'impulse_control',
+        name: '衝動買いスコア50以下',
+        isUnlocked: currentReceipts.length > 0 && impulseScore <= 50
+      },
+      {
+        key: 'monthly_budget',
+        name: '月間目標達成',
+        isUnlocked: thisMonthReceipts.length > 0 && currentAmount <= currentSpendingGoal.monthlyAmountLimit
+      },
+      {
+        key: 'cashless_expert',
+        name: 'キャッシュレス連携達人',
+        isUnlocked: currentLinkedPayments.length >= 1
+      }
+    ];
+
+    const existingKeys = new Set(existingBadges.map(b => b.badge_key));
+    const newlyUnlocked = badgeChecks.filter(b => b.isUnlocked && !existingKeys.has(b.key));
+
+    if (newlyUnlocked.length > 0) {
+      const inserts = newlyUnlocked.map(b => ({
+        user_id: session.user.id,
+        badge_key: b.key,
+        unlocked_at: new Date().toISOString()
+      }));
+
+      try {
+        const { data, error } = await supabase
+          .from('badges')
+          .insert(inserts)
+          .select();
+
+        if (error) throw error;
+
+        // 解除済みバッジリストの更新
+        const updatedBadges = [...existingBadges, ...(data || [])];
+        setUnlockedBadges(updatedBadges);
+
+        // 新規獲得トーストを表示（1つずつずらして出す）
+        newlyUnlocked.forEach((badge, index) => {
+          setTimeout(() => {
+            showBadgeToast(badge.name);
+          }, index * 800);
+        });
+      } catch (e) {
+        console.error('Failed to insert unlocked badges', e);
+      }
+    }
+  };
+
+  // ストリーク情報の取得とSupabase同期
+  const fetchAndSyncStreak = async (currentReceipts: Receipt[]): Promise<Streak> => {
+    const defaultStreak = { currentStreak: 0, bestStreak: 0, lastConviniDate: null };
+    if (!session) return defaultStreak;
     try {
       // 1. Supabaseから現在のレコードを取得
       const { data, error } = await supabase
@@ -156,23 +312,28 @@ function App() {
         if (upsertError) throw upsertError;
       }
 
-      setStreak({
+      const updatedStreak = {
         currentStreak,
         bestStreak: newBest,
         lastConviniDate
-      });
+      };
+
+      setStreak(updatedStreak);
 
       // 5. 祝福モーダル判定
       checkMilestones(currentStreak);
 
+      return updatedStreak;
     } catch (e) {
       console.error('Failed to sync streak with Supabase', e);
+      return defaultStreak;
     }
   };
 
   // Supabaseから履歴一覧を取得する
-  const fetchReceipts = async () => {
-    if (!session) return;
+  const fetchReceipts = async (): Promise<{ receipts: Receipt[]; streak: Streak }> => {
+    const defaultVal = { receipts: [], streak: { currentStreak: 0, bestStreak: 0, lastConviniDate: null } };
+    if (!session) return defaultVal;
     try {
       const { data, error } = await supabase
         .from('usage_history')
@@ -206,9 +367,11 @@ function App() {
 
       setReceipts(mapped);
       // ストリークの同期と計算を実行
-      fetchAndSyncStreak(mapped);
+      const updatedStreak = await fetchAndSyncStreak(mapped);
+      return { receipts: mapped, streak: updatedStreak };
     } catch (e) {
       console.error('Failed to fetch receipts from Supabase', e);
+      return defaultVal;
     }
   };
 
@@ -275,17 +438,28 @@ function App() {
   // セッション変更時に全てのクラウドデータを取得する
   useEffect(() => {
     if (session) {
-      setIsLoading(true);
-      Promise.all([
-        fetchReceipts(),
-        fetchSavingsGoals(),
-        fetchBaseSavings()
-      ]).finally(() => {
-        setIsLoading(false);
-      });
+      const initLoad = async () => {
+        setIsLoading(true);
+        try {
+          // データのフェッチ
+          const { receipts: receiptsData, streak: streakData } = await fetchReceipts();
+          const badgesData = await fetchUnlockedBadges();
+          await fetchSavingsGoals();
+          await fetchBaseSavings();
+          
+          // 初回バッジチェック
+          await checkAndUnlockBadges(receiptsData, streakData.currentStreak, spendingGoal, linkedPayments, badgesData);
+        } catch (e) {
+          console.error('Failed during initial load data sync', e);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      initLoad();
     } else {
       setReceipts([]);
       setSavingsGoals([]);
+      setUnlockedBadges([]);
       setMonthlyBaseSavings(5000);
       setMonthlyIncome(null);
       setStreak({ currentStreak: 0, bestStreak: 0, lastConviniDate: null });
@@ -293,28 +467,6 @@ function App() {
     }
   }, [session]);
 
-  // ローカルストレージからの読込（クラウド移行しない補助設定）
-  useEffect(() => {
-    // 1. 節約目標
-    const savedSpending = localStorage.getItem('cobaco_spending_goal');
-    if (savedSpending) {
-      try {
-        setSpendingGoal(JSON.parse(savedSpending));
-      } catch (e) {
-        console.error('Failed to parse spending goal', e);
-      }
-    }
-
-    // 2. 電子決済連携
-    const savedPayments = localStorage.getItem('cobaco_linked_payments');
-    if (savedPayments) {
-      try {
-        setLinkedPayments(JSON.parse(savedPayments));
-      } catch (e) {
-        console.error('Failed to parse linked payments', e);
-      }
-    }
-  }, []);
 
   // ダイナミックアイランド通知をトリガーする
   const triggerNotification = (message: string) => {
@@ -348,7 +500,9 @@ function App() {
       if (error) throw error;
 
       triggerNotification('レシートを保存しました 💾');
-      fetchReceipts();
+      const { receipts: r, streak: s } = await fetchReceipts();
+      const b = await fetchUnlockedBadges();
+      await checkAndUnlockBadges(r, s.currentStreak, spendingGoal, linkedPayments, b);
       setActiveTab('home');
     } catch (e) {
       console.error('Failed to add receipt to Supabase', e);
@@ -368,7 +522,9 @@ function App() {
       if (error) throw error;
 
       triggerNotification('履歴を削除しました 🗑️');
-      fetchReceipts();
+      const { receipts: r, streak: s } = await fetchReceipts();
+      const b = await fetchUnlockedBadges();
+      await checkAndUnlockBadges(r, s.currentStreak, spendingGoal, linkedPayments, b);
     } catch (e) {
       console.error('Failed to delete receipt from Supabase', e);
       triggerNotification('削除に失敗しました ❌');
@@ -399,7 +555,9 @@ function App() {
 
       triggerNotification('履歴を更新しました 💾');
       setEditingReceipt(null);
-      fetchReceipts();
+      const { receipts: r, streak: s } = await fetchReceipts();
+      const b = await fetchUnlockedBadges();
+      await checkAndUnlockBadges(r, s.currentStreak, spendingGoal, linkedPayments, b);
     } catch (e) {
       console.error('Failed to update receipt in Supabase', e);
       triggerNotification('更新に失敗しました ❌');
@@ -418,10 +576,14 @@ function App() {
   };
 
   // 節約目標の更新
-  const handleUpdateSpendingGoal = (newGoal: SpendingGoal) => {
+  const handleUpdateSpendingGoal = async (newGoal: SpendingGoal) => {
     setSpendingGoal(newGoal);
     localStorage.setItem('cobaco_spending_goal', JSON.stringify(newGoal));
     triggerNotification('節約目標を更新しました 🎯');
+    
+    // バッジチェック
+    const b = await fetchUnlockedBadges();
+    await checkAndUnlockBadges(receipts, streak.currentStreak, newGoal, linkedPayments, b);
   };
 
   // 基本貯蓄額の更新 (Supabaseに保存)
@@ -440,6 +602,10 @@ function App() {
 
       setMonthlyBaseSavings(amount);
       triggerNotification('基本の月間貯蓄額を更新しました 💰');
+
+      // バッジチェック
+      const b = await fetchUnlockedBadges();
+      await checkAndUnlockBadges(receipts, streak.currentStreak, spendingGoal, linkedPayments, b);
     } catch (e) {
       console.error('Failed to update base savings in Supabase', e);
       triggerNotification('更新に失敗しました ❌');
@@ -462,6 +628,10 @@ function App() {
 
       setMonthlyIncome(income);
       triggerNotification('月収情報を更新しました 💰');
+
+      // バッジチェック
+      const b = await fetchUnlockedBadges();
+      await checkAndUnlockBadges(receipts, streak.currentStreak, spendingGoal, linkedPayments, b);
     } catch (e) {
       console.error('Failed to update monthly income in Supabase', e);
       triggerNotification('更新に失敗しました ❌');
@@ -555,11 +725,14 @@ function App() {
       if (error) throw error;
 
       triggerNotification(`${provider}連携完了！3件の履歴を取得しました 📱`);
-      fetchReceipts();
+      const { receipts: r, streak: s } = await fetchReceipts();
+      const b = await fetchUnlockedBadges();
+      await checkAndUnlockBadges(r, s.currentStreak, spendingGoal, updatedPayments, b);
     } catch (e) {
       console.error('Failed to insert mock linked receipts to Supabase', e);
     }
   };
+
 
   // 時間を取得してステータスバーに表示
   const [currentTime, setCurrentTime] = useState('20:23');
@@ -656,11 +829,7 @@ function App() {
               />
             )}
             {activeTab === 'badges' && (
-              <BadgesView
-                receipts={receipts}
-                spendingGoal={spendingGoal}
-                linkedPayments={linkedPayments}
-              />
+              <BadgesView unlockedBadges={unlockedBadges} />
             )}
           </main>
 
@@ -797,6 +966,16 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* バッジ新規獲得トースト通知 */}
+      <div className="badge-toast-container">
+        {badgeToasts.map(toast => (
+          <div key={toast.id} className="badge-toast">
+            <span>🎉</span>
+            <span>バッジ獲得：{toast.badgeName}</span>
+          </div>
+        ))}
+      </div>
 
       {/* ホームインジケータ */}
       <div className="phone-home-indicator"></div>

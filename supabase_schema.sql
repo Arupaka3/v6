@@ -148,3 +148,27 @@ FOR ALL
 USING (auth.uid() = user_id)
 WITH CHECK (auth.uid() = user_id);
 
+
+-- Create badges table (NEW)
+CREATE TABLE IF NOT EXISTS public.badges (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    badge_key VARCHAR(50) NOT NULL,
+    unlocked_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(user_id, badge_key)
+);
+
+-- Enable Row Level Security (RLS) for badges
+ALTER TABLE public.badges ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they exist to prevent "already exists" errors
+DROP POLICY IF EXISTS "Users can manage own badges" ON public.badges;
+
+-- Policy for badges
+CREATE POLICY "Users can manage own badges"
+ON public.badges
+FOR ALL
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
+

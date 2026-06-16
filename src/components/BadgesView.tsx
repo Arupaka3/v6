@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
 import { Award, CheckCircle2, Lock } from 'lucide-react';
-import type { Receipt, SpendingGoal } from '../types';
+import type { UserBadge } from '../types';
 
 interface BadgesViewProps {
-  receipts: Receipt[];
-  spendingGoal: SpendingGoal;
-  linkedPayments: string[];
+  unlockedBadges: UserBadge[];
 }
 
 interface BadgeItem {
@@ -20,40 +18,22 @@ interface BadgeItem {
   unlockedDate?: string;
 }
 
-const BadgesView: React.FC<BadgesViewProps> = ({ receipts, spendingGoal, linkedPayments }) => {
-  // 今月の支出合計と利用回数 (5月中)
-  const thisMonthReceipts = receipts.filter(r => r.date.startsWith('2026-05'));
-  const currentAmount = thisMonthReceipts.reduce((sum, r) => sum + r.amount, 0);
-  const currentCount = thisMonthReceipts.length;
-
-  // 衝動買いスコアの計算
-  const impulseCount = thisMonthReceipts.filter(r => r.isImpulse).length;
-  const lateNightCount = thisMonthReceipts.filter(r => {
-    const hour = new Date(r.date).getHours();
-    return hour >= 22 || hour < 5;
-  }).length;
-
-  let impulseScore = 0;
-  if (currentCount > 0) {
-    const ratioScore = (impulseCount / currentCount) * 80;
-    const penaltyScore = Math.min(lateNightCount * 10, 20);
-    impulseScore = Math.min(Math.round(ratioScore + penaltyScore), 100);
-  }
-
-  // ストリークの計算
-  let noConvenienceStreak = 0;
-  if (receipts.length > 0) {
-    const sorted = [...receipts].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    const lastDate = new Date(sorted[0].date);
-    const today = new Date('2026-05-31T23:59:59');
-    const diffTime = today.getTime() - lastDate.getTime();
-    noConvenienceStreak = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
-  }
+const BadgesView: React.FC<BadgesViewProps> = ({ unlockedBadges }) => {
+  // 日付フォーマットヘルパー (YYYY/MM/DD)
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return undefined;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return undefined;
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}/${mm}/${dd}`;
+  };
 
   // 絞り込み用ステート
   const [activeFilter, setActiveFilter] = useState<'all' | 'unlocked' | 'locked'>('all');
 
-  // バッジ獲得判定
+  // バッジ獲得判定 (Supabase の unlockedBadges と同期)
   const badges: BadgeItem[] = [
     {
       id: 'first_scan',
@@ -63,8 +43,8 @@ const BadgesView: React.FC<BadgesViewProps> = ({ receipts, spendingGoal, linkedP
       icon: '🥉',
       color: '#CD7F32',
       gradient: 'linear-gradient(135deg, #ECC49A 0%, #CD7F32 100%)',
-      isUnlocked: receipts.length >= 1,
-      unlockedDate: receipts.length >= 1 ? '2026/05/11' : undefined
+      isUnlocked: unlockedBadges.some(b => b.badge_key === 'first_scan'),
+      unlockedDate: formatDate(unlockedBadges.find(b => b.badge_key === 'first_scan')?.unlocked_at)
     },
     {
       id: 'first_goal_achieved',
@@ -74,8 +54,8 @@ const BadgesView: React.FC<BadgesViewProps> = ({ receipts, spendingGoal, linkedP
       icon: '🎖️',
       color: '#FF9500',
       gradient: 'linear-gradient(135deg, #FFD60A 0%, #FF9500 100%)',
-      isUnlocked: receipts.length >= 1 && currentAmount <= spendingGoal.monthlyAmountLimit && currentCount <= spendingGoal.monthlyCountLimit,
-      unlockedDate: (receipts.length >= 1 && currentAmount <= spendingGoal.monthlyAmountLimit && currentCount <= spendingGoal.monthlyCountLimit) ? '2026/05/31' : undefined
+      isUnlocked: unlockedBadges.some(b => b.badge_key === 'first_goal_achieved'),
+      unlockedDate: formatDate(unlockedBadges.find(b => b.badge_key === 'first_goal_achieved')?.unlocked_at)
     },
     {
       id: 'streak_3',
@@ -85,8 +65,8 @@ const BadgesView: React.FC<BadgesViewProps> = ({ receipts, spendingGoal, linkedP
       icon: '🥈',
       color: '#C0C0C0',
       gradient: 'linear-gradient(135deg, #E6E6E6 0%, #999999 100%)',
-      isUnlocked: noConvenienceStreak >= 3,
-      unlockedDate: noConvenienceStreak >= 3 ? '2026/05/31' : undefined
+      isUnlocked: unlockedBadges.some(b => b.badge_key === 'streak_3'),
+      unlockedDate: formatDate(unlockedBadges.find(b => b.badge_key === 'streak_3')?.unlocked_at)
     },
     {
       id: 'streak_7',
@@ -96,8 +76,8 @@ const BadgesView: React.FC<BadgesViewProps> = ({ receipts, spendingGoal, linkedP
       icon: '🔥',
       color: '#FF3B30',
       gradient: 'linear-gradient(135deg, #FF6961 0%, #FF3B30 100%)',
-      isUnlocked: noConvenienceStreak >= 7,
-      unlockedDate: noConvenienceStreak >= 7 ? '2026/05/31' : undefined
+      isUnlocked: unlockedBadges.some(b => b.badge_key === 'streak_7'),
+      unlockedDate: formatDate(unlockedBadges.find(b => b.badge_key === 'streak_7')?.unlocked_at)
     },
     {
       id: 'impulse_control',
@@ -107,8 +87,8 @@ const BadgesView: React.FC<BadgesViewProps> = ({ receipts, spendingGoal, linkedP
       icon: '🥇',
       color: '#FFD700',
       gradient: 'linear-gradient(135deg, #FFE766 0%, #FFD700 100%)',
-      isUnlocked: receipts.length > 0 && impulseScore <= 50,
-      unlockedDate: receipts.length > 0 && impulseScore <= 50 ? '2026/05/29' : undefined
+      isUnlocked: unlockedBadges.some(b => b.badge_key === 'impulse_control'),
+      unlockedDate: formatDate(unlockedBadges.find(b => b.badge_key === 'impulse_control')?.unlocked_at)
     },
     {
       id: 'monthly_budget',
@@ -118,8 +98,8 @@ const BadgesView: React.FC<BadgesViewProps> = ({ receipts, spendingGoal, linkedP
       icon: '🏆',
       color: '#007AFF',
       gradient: 'linear-gradient(135deg, #74C6FF 0%, #007AFF 100%)',
-      isUnlocked: thisMonthReceipts.length > 0 && currentAmount <= spendingGoal.monthlyAmountLimit,
-      unlockedDate: thisMonthReceipts.length > 0 && currentAmount <= spendingGoal.monthlyAmountLimit ? '2026/05/31' : undefined
+      isUnlocked: unlockedBadges.some(b => b.badge_key === 'monthly_budget'),
+      unlockedDate: formatDate(unlockedBadges.find(b => b.badge_key === 'monthly_budget')?.unlocked_at)
     },
     {
       id: 'cashless_expert',
@@ -129,10 +109,11 @@ const BadgesView: React.FC<BadgesViewProps> = ({ receipts, spendingGoal, linkedP
       icon: '💳',
       color: '#34C759',
       gradient: 'linear-gradient(135deg, #8EFF96 0%, #34C759 100%)',
-      isUnlocked: linkedPayments.length >= 1,
-      unlockedDate: linkedPayments.length >= 1 ? '2026/05/31' : undefined
+      isUnlocked: unlockedBadges.some(b => b.badge_key === 'cashless_expert'),
+      unlockedDate: formatDate(unlockedBadges.find(b => b.badge_key === 'cashless_expert')?.unlocked_at)
     }
   ];
+
 
   const unlockedCount = badges.filter(b => b.isUnlocked).length;
 
