@@ -27,6 +27,23 @@ const DevDashboard: React.FC<DevDashboardProps> = () => {
   });
   const [badges, setBadges] = useState<any[]>([]);
 
+  // ページネーション用ステート
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const itemsPerPage = 10;
+  const totalPages = Math.ceil(receipts.length / itemsPerPage);
+
+  // タブ切り替え時にページを1に戻す
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab]);
+
+  // レシート削除等により総ページ数が減った場合の自動補正
+  useEffect(() => {
+    if (totalPages > 0 && currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [receipts.length, totalPages, currentPage]);
+
   // 認証情報の取得
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -536,7 +553,8 @@ const DevDashboard: React.FC<DevDashboardProps> = () => {
 
   return (
     <div style={{
-      minHeight: '100vh',
+      height: '100vh',
+      overflowY: 'auto',
       backgroundColor: '#121214',
       color: '#ECECEE',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
@@ -668,7 +686,7 @@ const DevDashboard: React.FC<DevDashboardProps> = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {receipts.map(r => {
+                    {receipts.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map(r => {
                       const dateLocal = r.used_at ? r.used_at.substring(0, 16) : '';
                       const itemsStr = r.items?.list ? r.items.list.join(', ') : '';
 
@@ -726,6 +744,47 @@ const DevDashboard: React.FC<DevDashboardProps> = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* ページネーションコントロール */}
+              {totalPages > 1 && (
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '16px', marginTop: '16px' }}>
+                  <button
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    style={{
+                      backgroundColor: '#2C2C2E',
+                      border: '1px solid #3A3A3C',
+                      color: currentPage === 1 ? '#48484A' : '#34C759',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                      fontWeight: 'bold',
+                      fontSize: '12px'
+                    }}
+                  >
+                    ＜ 前へ
+                  </button>
+                  <span style={{ fontSize: '12px', fontWeight: 'bold' }}>
+                    ページ {currentPage} / {totalPages}
+                  </span>
+                  <button
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    style={{
+                      backgroundColor: '#2C2C2E',
+                      border: '1px solid #3A3A3C',
+                      color: currentPage >= totalPages ? '#48484A' : '#34C759',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer',
+                      fontWeight: 'bold',
+                      fontSize: '12px'
+                    }}
+                  >
+                    次へ ＞
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
