@@ -75,14 +75,41 @@ const GoalsView: React.FC<GoalsViewProps> = ({
   // タブ切り替え時のアニメーションフラグ
   const [isTransitioning, setIsTransitioning] = useState(false);
 
-  // 選択中IDがリストに存在しない（またはリストが0件になった）場合の自動同期
+  // 直前の savingsGoals の ID一覧を保持して、新規追加されたものを自動選択する (NEW)
+  const prevGoalIdsRef = React.useRef<string[]>(savingsGoals.map(g => g.id));
+
+  // 選択中IDの自動同期と新規追加アイテムの自動選択 (NEW)
   useEffect(() => {
-    if (savingsGoals.length === 0) {
+    const currentIds = savingsGoals.map(g => g.id);
+    const prevIds = prevGoalIdsRef.current;
+
+    // 新規追加されたIDがあるか探す
+    const addedId = currentIds.find(id => !prevIds.includes(id));
+
+    if (addedId) {
+      setSelectedGoalId(addedId);
+    } else if (savingsGoals.length === 0) {
       setSelectedGoalId(null);
     } else if (!savingsGoals.some(g => g.id === selectedGoalId)) {
-      setSelectedGoalId(savingsGoals[0].id);
+      setSelectedGoalId(savingsGoals[0]?.id || null);
     }
+
+    prevGoalIdsRef.current = currentIds;
   }, [savingsGoals, selectedGoalId]);
+
+  // 選択中IDが変わったらスクロールインさせる (NEW)
+  useEffect(() => {
+    if (selectedGoalId) {
+      setTimeout(() => {
+        const activeTabEl = document.getElementById(`goal-tab-${selectedGoalId}`);
+        activeTabEl?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+          inline: 'center'
+        });
+      }, 100);
+    }
+  }, [selectedGoalId]);
 
   const handleSelectGoal = (id: string) => {
     setIsTransitioning(true);
@@ -568,6 +595,7 @@ const GoalsView: React.FC<GoalsViewProps> = ({
                   return (
                     <button
                       key={goal.id}
+                      id={`goal-tab-${goal.id}`}
                       type="button"
                       onClick={() => handleSelectGoal(goal.id)}
                       style={{
