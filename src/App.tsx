@@ -753,6 +753,155 @@ function App() {
     }
   };
 
+  // TODO: remove before production release
+  const handleInjectDemoData = async () => {
+    if (!session) return;
+    
+    const confirmInject = window.confirm("デモデータを投入しますか？既存のデータは削除されません。");
+    if (!confirmInject) return;
+
+    try {
+      setIsLoading(true);
+
+      // --- 1. receipts 過去3ヶ月分・計45件の生成 ---
+      const baseDate = new Date();
+      const demoReceipts: any[] = [];
+
+      // 45件を月ごとに分散
+      // 3ヶ月前 (3月): 15件
+      // 2ヶ月前 (4月): 14件
+      // 先月 (5月): 12件
+      // 今月 (6月): 4件 (計45件)
+      const monthsBack = [
+        { offset: 3, count: 15, minPrice: 400, maxPrice: 1200 },
+        { offset: 2, count: 14, minPrice: 300, maxPrice: 900 },
+        { offset: 1, count: 12, minPrice: 200, maxPrice: 800 },
+        { offset: 0, count: 4, minPrice: 300, maxPrice: 600 }
+      ];
+
+      const storeNames = ['セブンイレブン', 'ファミリーマート', 'ローソン'];
+      const itemsPresets = [
+        ['生茶 500ml', '鮭おにぎり', 'サラダチキン'],
+        ['黒烏龍茶', 'カツサンド', '大きなエクレア'],
+        ['カップヌードル', 'コカ・コーラ 500ml', 'ポテトチップス'],
+        ['明治ブルガリアヨーグルト', 'バナナ', '牛乳 1L'],
+        ['モンスターエナジー', 'Lチキ レギュラー', 'おしゃぶり昆布'],
+        ['お～いお茶', '幕の内弁当', '宇治抹茶ラテ']
+      ];
+
+      monthsBack.forEach(({ offset, count, minPrice, maxPrice }) => {
+        const year = baseDate.getFullYear();
+        const month = baseDate.getMonth() - offset;
+        
+        for (let i = 0; i < count; i++) {
+          const randomDay = Math.floor(Math.random() * 28) + 1;
+          
+          // 時間帯の分散
+          const timeRand = Math.random();
+          let hour = 12;
+          if (timeRand < 0.20) {
+            hour = Math.floor(Math.random() * 3) + 7; // 7, 8, 9
+          } else if (timeRand < 0.50) {
+            hour = Math.floor(Math.random() * 2) + 12; // 12, 13
+          } else if (timeRand < 0.75) {
+            hour = Math.floor(Math.random() * 3) + 17; // 17, 18, 19
+          } else {
+            const midnightHours = [23, 0, 1, 2];
+            hour = midnightHours[Math.floor(Math.random() * midnightHours.length)];
+          }
+
+          const minute = Math.floor(Math.random() * 60);
+          
+          const d = new Date(year, month, randomDay, hour, minute, 0);
+          const tzOffset = d.getTimezoneOffset() * 60000;
+          const localISO = new Date(d.getTime() - tzOffset).toISOString().slice(0, 19) + '+09:00'; // 日本時間 +09:00
+
+          const amount = Math.floor((Math.random() * (maxPrice - minPrice) + minPrice) / 10) * 10;
+          const storeName = storeNames[Math.floor(Math.random() * storeNames.length)] + ' デモ店舗';
+          const items = itemsPresets[Math.floor(Math.random() * itemsPresets.length)];
+
+          const isImpulse = amount >= 1000 || hour >= 22 || hour < 5;
+          const impulseReasons: string[] = [];
+          if (hour >= 22 || hour < 5) impulseReasons.push('深夜利用');
+          if (amount >= 1000) impulseReasons.push('高額支出');
+
+          demoReceipts.push({
+            user_id: session.user.id,
+            store_name: storeName,
+            amount: amount,
+            items: { list: items, isImpulse, impulseReasons },
+            used_at: localISO
+          });
+        }
+      });
+
+      // DB への挿入
+      const { error: receiptsError } = await supabase
+        .from('usage_history')
+        .insert(demoReceipts);
+      if (receiptsError) throw receiptsError;
+
+      // --- 2. wish_list の生成 ---
+      const demoWishList = [
+        { user_id: session.user.id, name: 'AirPods Pro', price: 39800, current_savings: 12000 },
+        { user_id: session.user.id, name: 'Nintendo Switch', price: 32978, current_savings: 8000 },
+        { user_id: session.user.id, name: '旅行（沖縄）', price: 80000, current_savings: 25000 }
+      ];
+
+      const { error: wishListError } = await supabase
+        .from('wish_list')
+        .insert(demoWishList);
+      if (wishListError) throw wishListError;
+
+      // --- 3. user_settings の UPSERT ---
+      const { error: settingsError } = await supabase
+        .from('user_settings')
+        .upsert({
+          user_id: session.user.id,
+          monthly_base_savings: 15000,
+          monthly_income: 250000,
+          updated_at: new Date().toISOString()
+        });
+      if (settingsError) throw settingsError;
+
+      // --- 4. streaks の UPSERT ---
+      const threeDaysAgo = new Date();
+      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+      const lastConviniDateStr = `${threeDaysAgo.getFullYear()}-${String(threeDaysAgo.getMonth() + 1).padStart(2, '0')}-${String(threeDaysAgo.getDate()).padStart(2, '0')}`;
+
+      const { error: streaksError } = await supabase
+        .from('streaks')
+        .upsert({
+          user_id: session.user.id,
+          current_streak: 5,
+          best_streak: 12,
+          last_convini_date: lastConviniDateStr,
+          updated_at: new Date().toISOString()
+        });
+      if (streaksError) throw streaksError;
+
+      // --- 5. フロント側のローカルストレージ (spendingGoal等) の更新 ---
+      const demoSpendingGoal = { monthlyAmountLimit: 10000, monthlyCountLimit: 12 };
+      setSpendingGoal(demoSpendingGoal);
+      localStorage.setItem('cobaco_spending_goal', JSON.stringify(demoSpendingGoal));
+
+      // データの再フェッチと同期
+      const { receipts: r, streak: s } = await fetchReceipts();
+      const b = await fetchUnlockedBadges();
+      await fetchSavingsGoals();
+      await fetchBaseSavings();
+      await checkAndUnlockBadges(r, s.currentStreak, demoSpendingGoal, linkedPayments, b);
+
+      triggerNotification('✅ デモデータを投入しました。ページを更新してください。');
+      alert('✅ デモデータを投入しました。ページを更新してください。');
+    } catch (e) {
+      console.error('Failed to inject demo data', e);
+      triggerNotification('❌ デモデータの投入に失敗しました');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
 
   // 時間を取得してステータスバーに表示
   const [currentTime, setCurrentTime] = useState('20:23');
@@ -913,6 +1062,21 @@ function App() {
                 {session.user.email || '未設定'}
               </span>
             </div>
+
+            {/* 開発者メニュー */}
+            {/* TODO: remove before production release */}
+            {session.user.email === 's24g1115nm@chibatech.ac.jp' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '0.5px solid var(--ios-border)', paddingTop: '16px', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--ios-red)', fontWeight: 800 }}>開発者メニュー</span>
+                <button
+                  onClick={handleInjectDemoData}
+                  className="ios-btn"
+                  style={{ width: '100%', backgroundColor: 'var(--ios-red)', color: '#FFFFFF' }}
+                >
+                  ⚠️ デモデータを投入する（既存データは残ります）
+                </button>
+              </div>
+            )}
 
             {/* ログアウトボタン */}
             <button
