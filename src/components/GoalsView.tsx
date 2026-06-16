@@ -1,12 +1,24 @@
 import React, { useState } from 'react';
 import { Target, TrendingUp, PiggyBank, Plus, Trash2, Sliders, ChevronDown, Sparkles } from 'lucide-react';
 import type { Receipt, SavingsGoal, SpendingGoal } from '../types';
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ReferenceLine,
+  ReferenceDot
+} from 'recharts';
 
 interface GoalsViewProps {
   receipts: Receipt[];
   spendingGoal: SpendingGoal;
   savingsGoals: SavingsGoal[];
   monthlyBaseSavings: number;
+  isLoading?: boolean;
   onUpdateSpendingGoal: (goal: SpendingGoal) => void;
   onAddSavingsGoal: (name: string, price: number, currentSavings: number) => void;
   onDeleteSavingsGoal: (id: string) => void;
@@ -18,6 +30,7 @@ const GoalsView: React.FC<GoalsViewProps> = ({
   spendingGoal,
   savingsGoals,
   monthlyBaseSavings,
+  isLoading = false,
   onUpdateSpendingGoal,
   onAddSavingsGoal,
   onDeleteSavingsGoal,
@@ -104,14 +117,40 @@ const GoalsView: React.FC<GoalsViewProps> = ({
     setShowAddForm(false);
   };
 
-  // 未来予測用コンビニ支出目安 (過去30日間、または月平均、データ無し時は8,000円をフォールバック)
-  const monthlySpent = monthlyAverageSpent > 0 ? monthlyAverageSpent : (last30DaysSpent > 0 ? last30DaysSpent : 8000);
+  // 未来予測用コンビニ支出目安 (仕様: receiptsテーブルの1ヶ月平均。なければuser_settingsのデフォルト値¥8,000を使用)
+  const monthlySpent = monthlyAverageSpent > 0 ? monthlyAverageSpent : 8000;
   
   // 削減による節約可能額 (月額) (要件2)
   const monthlyReductionSavings = Math.round(monthlySpent * (reductionRate / 100));
   
   // 合計の月間貯蓄可能額
   const totalMonthlySavings = monthlyBaseSavings + monthlyReductionSavings;
+
+  // 12ヶ月後までの累積データを生成 (0〜12ヶ月後、計13点)
+  interface ChartPoint {
+    name: string;
+    monthOffset: number;
+    baseAccumulated: number;
+    reducedAccumulated: number;
+  }
+  const chartData: ChartPoint[] = [];
+  const currentMonthIdx = today.getMonth(); // 0-11
+  
+  for (let i = 0; i <= 12; i++) {
+    const m = (currentMonthIdx + i) % 12;
+    const monthName = `${m + 1}月`;
+    chartData.push({
+      name: monthName,
+      monthOffset: i,
+      // 現状維持の累積額
+      baseAccumulated: monthlyBaseSavings * i,
+      // 削減後の累積額
+      reducedAccumulated: totalMonthlySavings * i,
+    });
+  }
+
+  // receiptsが0件かつwish_listが0件の場合の判定
+  const isEmpty = receipts.length === 0 && savingsGoals.length === 0;
 
   return (
     <div>
@@ -453,6 +492,136 @@ const GoalsView: React.FC<GoalsViewProps> = ({
             </div>
           </div>
         </div>
+
+        {/* 累積貯蓄額予測折れ線グラフ (Recharts) */}
+        {isLoading ? (
+          <div className="ios-card animate-skeleton" style={{ padding: '16px', backgroundColor: '#F2F2F7', minHeight: '260px', display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+            <div style={{ width: '50%', height: '16px', backgroundColor: '#E5E5EA', borderRadius: '4px' }}></div>
+            <div style={{ flex: 1, backgroundColor: '#E5E5EA', borderRadius: '12px' }}></div>
+          </div>
+        ) : isEmpty ? (
+          <div className="ios-card" style={{ padding: '32px 16px', textAlign: 'center', backgroundColor: '#FAFAFC', border: '1px dashed var(--ios-border)', marginBottom: '16px' }}>
+            <p style={{ fontSize: '13px', color: 'var(--ios-text-secondary)', margin: 0, lineHeight: 1.6 }}>
+              レシートと欲しいものを登録すると<br />予測グラフが表示されます
+            </p>
+          </div>
+        ) : (
+          <div className="ios-card" style={{ padding: '16px', overflow: 'hidden', backgroundColor: '#FFFFFF', border: '1px solid rgba(0,0,0,0.05)', marginBottom: '16px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--ios-text-secondary)', display: 'block', marginBottom: '16px' }}>
+              貯蓄額シミュレーション (12ヶ月後まで)
+            </span>
+            <div style={{ width: '100%', height: 220 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData} margin={{ top: 20, right: 15, left: -15, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F2F2F7" />
+                  <XAxis
+                    dataKey="name"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#8E8E93', fontSize: 10 }}
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#8E8E93', fontSize: 10 }}
+                    tickFormatter={(value) => `¥${(value / 1000).toLocaleString()}k`}
+                  />
+                  <Tooltip
+                    formatter={(value: any) => [`¥${Number(value).toLocaleString()}`, '']}
+                    labelStyle={{ fontSize: 11, fontWeight: 'bold' }}
+                    contentStyle={{
+                      backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                      border: '0.5px solid #E5E5EA',
+                      borderRadius: '8px',
+                      fontSize: '11px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
+                    }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="baseAccumulated"
+                    name="現状維持"
+                    stroke="#8E8E93"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="reducedAccumulated"
+                    name="削減後"
+                    stroke="#34C759"
+                    strokeWidth={3.5}
+                    dot={{ r: 3, stroke: '#34C759', strokeWidth: 1, fill: '#FFFFFF' }}
+                    activeDot={{ r: 6 }}
+                  />
+                  
+                  {/* wish_listの目標値ラインと交点マーク */}
+                  {savingsGoals.map(goal => {
+                    const remaining = Math.max(0, goal.price - (goal.currentSavings || 0));
+                    if (remaining <= 0) return null;
+
+                    if (totalMonthlySavings <= 0) return null;
+                    const monthsNeeded = Math.ceil(remaining / totalMonthlySavings);
+                    const showDot = monthsNeeded <= 12;
+                    const targetMonthName = showDot ? chartData[monthsNeeded].name : null;
+
+                    return (
+                      <React.Fragment key={goal.id}>
+                        {/* 水平目標ライン */}
+                        <ReferenceLine
+                          y={remaining}
+                          stroke="#FF9500"
+                          strokeDasharray="3 3"
+                          strokeWidth={1}
+                          label={{
+                            value: goal.name,
+                            position: 'insideBottomLeft',
+                            fill: '#FF9500',
+                            fontSize: 9,
+                            fontWeight: '600',
+                            offset: 4
+                          }}
+                        />
+                        {/* 達成交点マーク */}
+                        {showDot && targetMonthName && (
+                          <ReferenceDot
+                            x={targetMonthName}
+                            y={remaining}
+                            r={5}
+                            fill="#34C759"
+                            stroke="#FFFFFF"
+                            strokeWidth={2}
+                            label={{
+                              value: `${monthsNeeded}ヶ月で達成！`,
+                              position: 'top',
+                              fill: '#34C759',
+                              fontSize: 9,
+                              fontWeight: 'bold',
+                              offset: 6
+                            }}
+                          />
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            
+            {/* 凡例 */}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '12px', fontSize: '10px', color: 'var(--ios-text-secondary)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <div style={{ width: '12px', height: '2px', backgroundColor: '#8E8E93' }}></div>
+                <span>現状維持 (月 ¥{monthlyBaseSavings.toLocaleString()})</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <div style={{ width: '12px', height: '3.5px', backgroundColor: '#34C759' }}></div>
+                <span>{reductionRate}%削減後 (月 ¥{totalMonthlySavings.toLocaleString()})</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 欲しいものリストとシミュレーション結果カード (要件4, 5, 6, 8) */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>

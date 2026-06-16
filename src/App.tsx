@@ -18,6 +18,7 @@ function App() {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [islandActive, setIslandActive] = useState(false);
   const [islandMessage, setIslandMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
   // 編集中のレシート情報
   const [editingReceipt, setEditingReceipt] = useState<Receipt | null>(null);
@@ -151,13 +152,19 @@ function App() {
   // セッション変更時に全てのクラウドデータを取得する
   useEffect(() => {
     if (session) {
-      fetchReceipts();
-      fetchSavingsGoals();
-      fetchBaseSavings();
+      setIsLoading(true);
+      Promise.all([
+        fetchReceipts(),
+        fetchSavingsGoals(),
+        fetchBaseSavings()
+      ]).finally(() => {
+        setIsLoading(false);
+      });
     } else {
       setReceipts([]);
       setSavingsGoals([]);
       setMonthlyBaseSavings(5000);
+      setIsLoading(false);
     }
   }, [session]);
 
@@ -491,6 +498,7 @@ function App() {
                 spendingGoal={spendingGoal}
                 savingsGoals={savingsGoals}
                 monthlyBaseSavings={monthlyBaseSavings}
+                isLoading={isLoading}
                 onUpdateSpendingGoal={handleUpdateSpendingGoal}
                 onAddSavingsGoal={handleAddSavingsGoal}
                 onDeleteSavingsGoal={handleDeleteSavingsGoal}
