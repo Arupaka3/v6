@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Target, TrendingUp, PiggyBank, Plus, Trash2, Sliders, ChevronDown, Sparkles } from 'lucide-react';
+import { Target, TrendingUp, PiggyBank, Plus, Trash2, Sliders, Sparkles } from 'lucide-react';
 import type { Receipt, SavingsGoal, SpendingGoal } from '../types';
 import {
   ResponsiveContainer,
@@ -430,23 +430,7 @@ const GoalsView: React.FC<GoalsViewProps> = ({
             <PiggyBank size={16} color="var(--ios-orange)" />
             未来予測・欲しいもの達成シミュレーション
           </span>
-          <button
-            onClick={() => setShowAddForm(!showAddForm)}
-            style={{
-              border: 'none',
-              background: 'var(--ios-orange-light)',
-              color: 'var(--ios-orange)',
-              width: '28px',
-              height: '28px',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer'
-            }}
-          >
-            {showAddForm ? <ChevronDown size={14} /> : <Plus size={14} />}
-          </button>
+
         </div>
 
         {showAddForm && (
@@ -885,8 +869,27 @@ const GoalsView: React.FC<GoalsViewProps> = ({
         {/* 欲しいものリストとシミュレーション結果カード (要件4, 5, 6, 8) */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {savingsGoals.length === 0 ? (
-            <div style={{ textAlign: 'center', color: 'var(--ios-text-secondary)', padding: '20px 0', fontSize: '12px' }}>
-              欲しいものが登録されていません。上の＋ボタンから登録しましょう！
+            <div style={{ textAlign: 'center', color: 'var(--ios-text-secondary)', padding: '24px 16px', fontSize: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+              <span>欲しいものが登録されていません。</span>
+              <button
+                type="button"
+                onClick={() => setShowAddForm(true)}
+                style={{
+                  border: 'none',
+                  background: 'var(--ios-orange-light)',
+                  color: 'var(--ios-orange)',
+                  borderRadius: '20px',
+                  padding: '8px 16px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <Plus size={12} /> 欲しいものを追加する
+              </button>
             </div>
           ) : (
             savingsGoals.map(goal => {
