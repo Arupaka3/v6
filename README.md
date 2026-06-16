@@ -1,73 +1,61 @@
-# React + TypeScript + Vite
+# ConviTrack (Cobaco) - コンビニ浪費改善アプリ
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+コンビニでのついつい無駄遣いしてしまう習慣を可視化し、賢く貯金・自己投資に回すための iOS風モバイルファーストWebアプリケーションです。
 
-Currently, two official plugins are available:
+🚀 **本番環境デプロイ先 URL:**  
+[https://v4-sable-zeta.vercel.app/](https://v4-sable-zeta.vercel.app/)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+---
 
-## React Compiler
+## 📱 アプリの主な機能
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 1. ユーザー認証とデータ保護 (Supabase)
+* メールアドレスとパスワードによる安全な新規登録・ログイン・ログアウト。
+* Row Level Security (RLS) により、ログインしたユーザー自身のデータのみを厳重に保護。
 
-## Expanding the ESLint configuration
+### 2. コンビニ利用履歴のクラウド管理 (CRUD)
+* 利用日時、店舗名、金額、商品のクラウド保存・一覧取得。
+* 登録したデータの編集・削除（確認ダイアログ付き）に対応。
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### 3. 未来予測・欲しいもの達成シミュレーション (Step 2)
+* 実際のコンビニ利用履歴から「今月の支出」「過去30日間の支出」「全期間の平均月間支出」を動的に算出。
+* 削減率（10%, 20%, 30%, 50%）を切り替え可能なシミュレーター。
+* コンビニ利用を削減することで「欲しいもの（目標）が何ヶ月早く購入できるか」を可視化。
+* 欲しいものごとの貯蓄進捗バー（達成率）の表示。
+* 月間貯蓄設定（基本貯金ペース）の自由な変更・クラウド保存。
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+---
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## 🛠️ 技術スタック
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+* **Frontend**: React (TypeScript), Vite, Vanilla CSS
+* **Backend / Database / Auth**: Supabase (PostgreSQL), Row Level Security (RLS)
+* **Icons**: Lucide React
+* **Hosting**: Vercel
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+---
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## ⚙️ ローカル開発環境のセットアップ
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+1. **リポジトリのクローン**
+   ```bash
+   git clone https://github.com/Arupaka3/v4.git
+   cd v4
+   ```
+
+2. **依存関係のインストール**
+   ```bash
+   npm install
+   ```
+
+3. **環境変数（.env）の作成**
+   プロジェクトルートに `.env` ファイルを作成し、ご自身の Supabase の鍵を記述してください。
+   ```env
+   VITE_SUPABASE_URL=your-supabase-url
+   VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+   ```
+
+4. **開発サーバーの起動**
+   ```bash
+   npm run dev
+   ```
