@@ -20,6 +20,7 @@ const HomeView: React.FC<HomeViewProps> = ({
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [graphPeriod, setGraphPeriod] = useState<7 | 30 | 90>(7);
   const [expandedReceipts, setExpandedReceipts] = useState<{ [id: string]: boolean }>({});
+  const [feedbackRandomIdx] = useState(() => Math.floor(Math.random() * 3));
 
   // システムの「今日」の基準日付を 2026-05-31 とする
   const TODAY_STR = '2026-05-31';
@@ -89,58 +90,79 @@ const HomeView: React.FC<HomeViewProps> = ({
   }
 
   // --- 行動変化フィードバックの動的計算 (先週と今週の比較) ---
-  // 今週 (5/25 - 5/31)
+  const day = today.getDay();
+  const diffToMonday = day === 0 ? 6 : day - 1;
+  
+  // 今週 (今週月曜 00:00:00 〜 今日 23:59:59)
+  const thisWeekStart = new Date(today);
+  thisWeekStart.setDate(today.getDate() - diffToMonday);
+  thisWeekStart.setHours(0, 0, 0, 0);
+  const thisWeekEnd = new Date(today);
+  thisWeekEnd.setHours(23, 59, 59, 999);
+
+  // 先週 (先週月曜 00:00:00 〜 先週日曜 23:59:59)
+  const lastWeekStart = new Date(thisWeekStart);
+  lastWeekStart.setDate(thisWeekStart.getDate() - 7);
+  lastWeekStart.setHours(0, 0, 0, 0);
+  const lastWeekEnd = new Date(thisWeekStart);
+  lastWeekEnd.setDate(thisWeekStart.getDate() - 1);
+  lastWeekEnd.setHours(23, 59, 59, 999);
+
   const receiptsThisWeek = receipts.filter(r => {
     const d = new Date(r.date);
-    return d >= new Date('2026-05-25T00:00:00') && d <= new Date('2026-05-31T23:59:59');
+    return d >= thisWeekStart && d <= thisWeekEnd;
   });
-
-  // 先週 (5/18 - 5/24)
   const receiptsLastWeek = receipts.filter(r => {
     const d = new Date(r.date);
-    return d >= new Date('2026-05-18T00:00:00') && d <= new Date('2026-05-24T23:59:59');
+    return d >= lastWeekStart && d <= lastWeekEnd;
   });
 
-  const feedBacks: string[] = [];
+  const totalThisWeek = receiptsThisWeek.reduce((sum, r) => sum + r.amount, 0);
+  const totalLastWeek = receiptsLastWeek.reduce((sum, r) => sum + r.amount, 0);
 
-  // ① 利用回数比較
-  const countThisWeek = receiptsThisWeek.length;
-  const countLastWeek = receiptsLastWeek.length;
-  if (countLastWeek > 0 && countThisWeek < countLastWeek) {
-    const reductionRate = Math.round(((countLastWeek - countThisWeek) / countLastWeek) * 100);
-    feedBacks.push(`🎉 先週より利用回数が${reductionRate}%減っています！素晴らしい改善です！`);
-  }
+  const hasEnoughData = receiptsThisWeek.length > 0 && receiptsLastWeek.length > 0;
 
-  // ② 深夜利用比較
-  const lateNightThisWeek = receiptsThisWeek.filter(r => {
-    const h = new Date(r.date).getHours();
-    return h >= 22 || h < 5;
-  }).length;
-  const lateNightLastWeek = receiptsLastWeek.filter(r => {
-    const h = new Date(r.date).getHours();
-    return h >= 22 || h < 5;
-  }).length;
-  if (lateNightLastWeek > 0 && lateNightThisWeek < lateNightLastWeek) {
-    feedBacks.push(`🌙 深夜の利用が減少しています。睡眠の質と健康状態もアップ！`);
-  }
+  let feedbackMessage = '';
+  let totalDiff = 0;
+  let diffRate = 0;
 
-  // ③ 衝動買い割合の比較
-  const impulseThisWeek = receiptsThisWeek.filter(r => r.isImpulse).length;
-  const impulseLastWeek = receiptsLastWeek.filter(r => r.isImpulse).length;
-  const impulseRatioThisWeek = countThisWeek > 0 ? impulseThisWeek / countThisWeek : 0;
-  const impulseRatioLastWeek = countLastWeek > 0 ? impulseLastWeek / countLastWeek : 0;
-  if (impulseRatioLastWeek > 0 && impulseRatioThisWeek < impulseRatioLastWeek) {
-    feedBacks.push(`🛍️ 衝動買いスコアが改善しています。本当に必要な買い物が増えました。`);
-  }
+  if (hasEnoughData) {
+    diffRate = ((totalThisWeek - totalLastWeek) / totalLastWeek) * 100;
+    totalDiff = Math.abs(totalThisWeek - totalLastWeek);
+    const absRate = Math.round(Math.abs(diffRate));
+    const diffStr = totalDiff.toLocaleString();
 
-  // ④ 利用頻度の全体的な改善フィードバック
-  if (countThisWeek < countLastWeek && lateNightThisWeek < lateNightLastWeek) {
-    feedBacks.push(`🔥 コンビニの利用頻度が下がっています。欲しいもののために貯金が進んでいます！`);
-  }
-
-  // フィードバックがない場合のデフォルト
-  if (feedBacks.length === 0) {
-    feedBacks.push(`📈 レシートを登録し続けることで、先週の自分と比較した改善点が表示されます！`);
+    if (diffRate <= -20) {
+      const patterns = [
+        `🎉 すごい！先週より${diffStr}円節約できています！`,
+        `✨ 先週と比べて${absRate}%の節約に成功！この調子！`,
+        `💪 節約ペースが加速中！先週より${diffStr}円浮きました`
+      ];
+      feedbackMessage = patterns[feedbackRandomIdx];
+    } else if (diffRate <= -10) {
+      const patterns = [
+        `👍 順順調！先週より${absRate}%節約できています`,
+        `📈 少しずつ改善中。先週比${absRate}%ダウン！`,
+        `🌱 コツコツ節約が効いてきた。あと一歩！`
+      ];
+      feedbackMessage = patterns[feedbackRandomIdx];
+    } else if (diffRate < 10) {
+      const patterns = [
+        `📊 先週とほぼ同じペースです`,
+        `🔄 横ばい状態。もう少し意識してみよう`,
+        `💭 先週と変化なし。削減率を上げてみる？`
+      ];
+      feedbackMessage = patterns[feedbackRandomIdx];
+    } else {
+      const patterns = [
+        `⚠️ 先週より${diffStr}円多く使っています。見直してみよう`,
+        `😅 今週はちょっと使いすぎ？先週比+${absRate}%です`,
+        `🔴 支出が増加中。明日からリセットしよう！`
+      ];
+      feedbackMessage = patterns[feedbackRandomIdx];
+    }
+  } else {
+    feedbackMessage = 'レシートを登録し続けることで、先週の自分と比較した改善点が表示されます！';
   }
 
   // 最新3件の履歴
@@ -409,13 +431,22 @@ const HomeView: React.FC<HomeViewProps> = ({
         </span>
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', zIndex: 1, position: 'relative' }}>
-          {feedBacks.map((feedback, idx) => (
-            <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-              <span style={{ fontSize: '13px', color: '#1B9A5E', lineHeight: '1.4', fontWeight: 600 }}>
-                {feedback}
+          {hasEnoughData ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <span style={{ fontSize: '13.5px', color: '#1B9A5E', lineHeight: '1.4', fontWeight: 700 }}>
+                {feedbackMessage}
+              </span>
+              <span style={{ fontSize: '11px', color: 'rgba(27, 154, 94, 0.7)', fontWeight: '600' }}>
+                今週：¥{totalThisWeek.toLocaleString()} / 先週：¥{totalLastWeek.toLocaleString()}
               </span>
             </div>
-          ))}
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+              <span style={{ fontSize: '13px', color: '#1B9A5E', lineHeight: '1.4', fontWeight: 600 }}>
+                {feedbackMessage}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
