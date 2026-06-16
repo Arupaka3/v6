@@ -36,6 +36,8 @@ function App() {
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   // 基本月間貯蓄額 (Supabaseで永続化)
   const [monthlyBaseSavings, setMonthlyBaseSavings] = useState<number>(5000);
+  // 月間収入 (Supabaseで永続化) (NEW)
+  const [monthlyIncome, setMonthlyIncome] = useState<number | null>(null);
 
   const [linkedPayments, setLinkedPayments] = useState<string[]>([]);
 
@@ -123,7 +125,7 @@ function App() {
     try {
       const { data, error } = await supabase
         .from('user_settings')
-        .select('monthly_base_savings')
+        .select('monthly_base_savings, monthly_income')
         .eq('user_id', session.user.id)
         .single();
 
@@ -134,16 +136,19 @@ function App() {
             .from('user_settings')
             .insert({
               user_id: session.user.id,
-              monthly_base_savings: 5000
+              monthly_base_savings: 5000,
+              monthly_income: null
             });
           if (insertError) throw insertError;
           setMonthlyBaseSavings(5000);
+          setMonthlyIncome(null);
           return;
         }
         throw error;
       }
 
       setMonthlyBaseSavings(data.monthly_base_savings);
+      setMonthlyIncome(data.monthly_income);
     } catch (e) {
       console.error('Failed to fetch base savings from Supabase', e);
     }
@@ -164,6 +169,7 @@ function App() {
       setReceipts([]);
       setSavingsGoals([]);
       setMonthlyBaseSavings(5000);
+      setMonthlyIncome(null);
       setIsLoading(false);
     }
   }, [session]);
@@ -317,6 +323,28 @@ function App() {
       triggerNotification('基本の月間貯蓄額を更新しました 💰');
     } catch (e) {
       console.error('Failed to update base savings in Supabase', e);
+      triggerNotification('更新に失敗しました ❌');
+    }
+  };
+
+  // 月収の更新 (Supabaseに保存)
+  const handleUpdateMonthlyIncome = async (income: number) => {
+    if (!session) return;
+    try {
+      const { error } = await supabase
+        .from('user_settings')
+        .upsert({
+          user_id: session.user.id,
+          monthly_income: income,
+          updated_at: new Date().toISOString()
+        });
+
+      if (error) throw error;
+
+      setMonthlyIncome(income);
+      triggerNotification('月収情報を更新しました 💰');
+    } catch (e) {
+      console.error('Failed to update monthly income in Supabase', e);
       triggerNotification('更新に失敗しました ❌');
     }
   };
@@ -490,6 +518,8 @@ function App() {
             {activeTab === 'analytics' && (
               <AnalyticsView
                 receipts={receipts}
+                monthlyIncome={monthlyIncome}
+                onUpdateMonthlyIncome={handleUpdateMonthlyIncome}
               />
             )}
             {activeTab === 'goals' && (

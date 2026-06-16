@@ -1,14 +1,19 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Clock, Lightbulb, ShieldAlert, TrendingUp } from 'lucide-react';
 import type { Receipt } from '../types';
 
 interface AnalyticsViewProps {
   receipts: Receipt[];
+  monthlyIncome: number | null;
+  onUpdateMonthlyIncome: (income: number) => void;
 }
 
-const AnalyticsView: React.FC<AnalyticsViewProps> = ({ receipts }) => {
+const AnalyticsView: React.FC<AnalyticsViewProps> = ({ 
+  receipts,
+  monthlyIncome,
+  onUpdateMonthlyIncome
+}) => {
   const totalCount = receipts.length;
-  const impulseCount = receipts.filter(r => r.isImpulse).length;
 
   // 1. 時間帯別の利用回数集計
   let morning = 0; // 5-11
@@ -42,77 +47,81 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ receipts }) => {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3);
 
-  // 3. コンビニ依存度診断の計算
-  // 依存度スコア(0~100) = (深夜利用率 * 40) + (衝動買い率 * 40) + (利用回数ペナルティ最大20点)
-  let dependencyScore = 0;
-  const nightRatio = totalCount > 0 ? night / totalCount : 0;
-  const impulseRatio = totalCount > 0 ? impulseCount / totalCount : 0;
-  // 月の利用回数ペナルティ (目標10回として、15回以上で満点20点)
-  const countPenalty = totalCount > 0 ? Math.min((totalCount / 15) * 20, 20) : 0;
+  // 3. 診断状態の管理ステート
+  const [showDiagnosis, setShowDiagnosis] = useState(false);
+  const [incomeInput, setIncomeInput] = useState('');
+  const [isEditingIncome, setIsEditingIncome] = useState(false);
 
-  if (totalCount > 0) {
-    dependencyScore = Math.min(Math.round((nightRatio * 40) + (impulseRatio * 40) + countPenalty), 100);
+  // 平均月間コンビニ支出の算出
+  let monthlyConvenienceSpent = 0;
+  if (receipts.length > 0) {
+    const today = new Date();
+    const totalSpent = receipts.reduce((sum, r) => sum + r.amount, 0);
+    const dates = receipts.map(r => new Date(r.date).getTime());
+    const oldestDate = new Date(Math.min(...dates));
+    const monthDiff = (today.getFullYear() - oldestDate.getFullYear()) * 12 + (today.getMonth() - oldestDate.getMonth()) + 1;
+    monthlyConvenienceSpent = Math.round(totalSpent / Math.max(1, monthDiff));
   }
 
-  // 依存タイプ判定
-  let dependencyType = 'バランス型 🔰';
-  let dependencyDesc = '';
-  let dependencyFeatures: string[] = [];
-  let dependencyAdvises: string[] = [];
-  let themeColor = 'var(--ios-primary)';
-  let themeBg = 'var(--ios-primary-light)';
+  // 依存度診断の計算とタイプ判定
+  let dependencyRate = 0;
+  if (monthlyIncome && monthlyIncome > 0) {
+    dependencyRate = (monthlyConvenienceSpent / monthlyIncome) * 100;
+  }
+  const roundedRate = Math.min(100, Math.round(dependencyRate * 10) / 10);
 
-  if (totalCount === 0) {
-    dependencyType = 'データ未登録 ℹ️';
-    dependencyDesc = 'レシートを登録すると、あなたのコンビニ依存度と浪費タイプが診断されます。';
-  } else if (dependencyScore < 35) {
-    dependencyType = 'スマートセーバー型 🥇';
-    dependencyDesc = 'コンビニの利用を必要最小限に抑え、しっかりと自己コントロールができています。';
-    themeColor = 'var(--ios-primary)';
-    themeBg = 'var(--ios-primary-light)';
-    dependencyFeatures = ['衝動買いが極めて少ない', '深夜の利用がほとんどない', '必要なものだけピンポイントで購入'];
+  let typeName = 'コンビニ一般人';
+  let icon = '🙂';
+  let comment = '平均的な使い方です';
+  let color = '#34C759'; // 緑
+  let dependencyAdvises: string[] = [];
+
+  if (roundedRate <= 3) {
+    typeName = 'コンビニ賢者';
+    icon = '🧙';
+    comment = '完璧なコントロールです！';
+    color = '#34C759';
     dependencyAdvises = [
-      '素晴らしい自制心です！コンビニの無駄な利用を完璧に排除できています。',
-      '浮いたお金を「未来予測」タブに登録した欲しいものの貯金へ回すと、さらにモチベーションが高まります！'
+      '🎉 素晴らしい自制心です！コンビニの無駄な利用を完璧に排除できています。',
+      '💰 浮いたお金を「未来予測」タブに登録した欲しいものの貯金へ回すと、さらにモチベーションが高まります！'
     ];
-  } else if (nightRatio >= 0.35) {
-    dependencyType = '疲労回復型 🌙';
-    dependencyDesc = '深夜の利用が多く、ストレスや疲れをコンビニの食べ物・飲み物で癒やそうとする傾向があります。';
-    themeColor = 'var(--ios-accent)';
-    themeBg = 'var(--ios-accent-light)';
-    dependencyFeatures = ['22時以降の深夜利用が多い', 'エナジードリンクや夜食・アイスの購入が多い', '平日の利用が多め'];
+  } else if (roundedRate <= 7) {
+    typeName = 'コンビニ一般人';
+    icon = '🙂';
+    comment = '平均的な使い方です';
+    color = '#34C759';
     dependencyAdvises = [
-      '🌙 深夜のカップ麺やアイスは1回で500円以上になりがち。夜食はドラッグストアやスーパーで安く買い置きしておくと、支出を半分以下に抑えられます！',
-      '🔋 カフェイン飲料や糖分への依存度を抑え、まずは十分な睡眠をとることを優先して、コンビニに頼らない疲れの癒やし方を見つけましょう。'
+      '👍 健全な利用ペースです。この調子で必要な時だけの利用を続けましょう。',
+      '☕ コーヒーなど特定の決まった買い物以外のついで買いを避けることで、さらに節約が進みます。'
     ];
-  } else if (impulseRatio >= 0.50) {
-    dependencyType = 'ストレス発散型 🛍️';
-    dependencyDesc = '「ご褒美」やついで買いなど、衝動的な買い物が多く、レジ横のホットスナックや新作スイーツに惹かれやすい傾向です。';
-    themeColor = 'var(--ios-red)';
-    themeBg = 'var(--ios-red-light)';
-    dependencyFeatures = ['衝動買いフラグが50%以上', 'スイーツやレジ横スナックをよく買う', '金曜や週末に集中'];
+  } else if (roundedRate <= 12) {
+    typeName = 'コンビニ常連';
+    icon = '😅';
+    comment = '少し使いすぎかも';
+    color = '#34C759';
     dependencyAdvises = [
-      '💸 勉強やバイトのストレスをコンビニでの買い物で手軽に解消していませんか？「目的の商品以外は視界に入れない」ルールを意識しましょう。',
-      '🍩 毎日の「ご褒美」を週1〜2回に限定し、ご褒美デー以外はコンビニに立ち寄らないよう心がけるだけで、大幅に節約できます！'
+      '🥤 ついで買いや寄り道が習慣化している可能性があります。少しだけ利用頻度を意識してみましょう。',
+      '🍩 菓子類やデザートなどの甘い誘惑を週1〜2回に抑えるだけで、月数千円の節約効果が出ます！'
+    ];
+  } else if (roundedRate <= 20) {
+    typeName = 'コンビニ依存気味';
+    icon = '😰';
+    comment = '見直しをおすすめします';
+    color = '#FF9500'; // オレンジ
+    dependencyAdvises = [
+      '⚠️ 支出に占めるコンビニの割合が高めです。「マイボトルを持ち歩く」など、簡単なルール作りから始めましょう。',
+      '🏪 なんとなくコンビニに立ち寄る習慣（寄り道ルート）自体を意識して変更すると非常に効果的です。'
     ];
   } else {
-    dependencyType = '無意識寄り道型 ⚡';
-    dependencyDesc = '特に目的がないのになんとなくコンビニに立ち寄ってしまい、少額の買い物を繰り返すタイプです。';
-    themeColor = 'var(--ios-orange)';
-    themeBg = 'var(--ios-orange-light)';
-    dependencyFeatures = ['1日複数回行くことがある', '1回あたりの購入額は少なめ', 'ついで買いが多い'];
+    typeName = 'コンビニ廃人';
+    icon = '🚨';
+    comment = '要注意レベルです';
+    color = '#FF3B30'; // 赤
     dependencyAdvises = [
-      '🚶‍♂️ 朝のコーヒー、昼のパン、放課後のグミなど、無意識にコンビニへ引き寄せられるルートになっていませんか？寄り道ルートを変えてみましょう。',
-      '🥤 「マイボトル（水筒）を持ち歩く」「コンビニに行くのは1日1回まで」とマイルールを設定すると効果的です。'
+      '🚨 要注意レベルです。無意識のコンビニ寄りが月収を大きく圧迫している可能性があります。',
+      '🚶‍♂️ 日常の飲料やスナックはスーパーやドラッグストアで買い置きするようにし、明日から「コンビニ断ち」を意識してください。'
     ];
   }
-
-  // 円形プログレスリングの計算
-  const radius = 40;
-  const stroke = 8;
-  const normalizedRadius = radius - stroke * 2;
-  const circumference = normalizedRadius * 2 * Math.PI;
-  const strokeDashoffset = circumference - (dependencyScore / 100) * circumference;
 
   return (
     <div>
@@ -121,9 +130,9 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ receipts }) => {
       </div>
 
       {/* コンビニ依存度診断カード */}
-      <div className="ios-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', border: `1px solid ${themeColor}20` }}>
+      <div className="ios-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <span style={{ fontSize: '15px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <ShieldAlert size={18} color={themeColor} />
+          <ShieldAlert size={18} color="var(--ios-primary)" />
           コンビニ依存度診断
         </span>
 
@@ -131,75 +140,130 @@ const AnalyticsView: React.FC<AnalyticsViewProps> = ({ receipts }) => {
           <div style={{ textAlign: 'center', color: 'var(--ios-text-secondary)', padding: '20px 0', fontSize: '13px' }}>
             データ不足のため、診断できません。レシートを追加してください。
           </div>
+        ) : !showDiagnosis ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 10px', gap: '12px' }}>
+            <p style={{ fontSize: '12px', color: 'var(--ios-text-secondary)', textAlign: 'center', margin: 0, lineHeight: 1.5 }}>
+              月間収入とコンビニ支出の割合から、あなたの依存度タイプと改善のアドバイスを診断します。
+            </p>
+            <button
+              onClick={() => {
+                setShowDiagnosis(true);
+                if (monthlyIncome) {
+                  setIncomeInput(monthlyIncome.toString());
+                } else {
+                  setIncomeInput('');
+                }
+              }}
+              className="ios-btn"
+              style={{ padding: '10px 24px', fontSize: '14px', borderRadius: '12px', width: 'auto' }}
+            >
+              診断をスタート 🎯
+            </button>
+          </div>
+        ) : (monthlyIncome === null || monthlyIncome === undefined || isEditingIncome) ? (
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault();
+              const income = Number(incomeInput);
+              if (income > 0) {
+                onUpdateMonthlyIncome(income);
+                setIsEditingIncome(false);
+              }
+            }}
+            style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '10px 0' }}
+          >
+            <div className="ios-input-group" style={{ margin: 0 }}>
+              <label className="ios-input-label" style={{ fontSize: '11px' }}>月収を入力してください (円)</label>
+              <input
+                type="number"
+                className="ios-input"
+                value={incomeInput}
+                onChange={e => setIncomeInput(e.target.value)}
+                placeholder="例: 200000"
+                min="1000"
+                required
+                style={{ padding: '8px 12px', fontSize: '14px' }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {isEditingIncome && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingIncome(false)}
+                  className="ios-btn ios-btn-secondary"
+                  style={{ padding: '8px 16px', fontSize: '13px', borderRadius: '10px', width: 'auto' }}
+                >
+                  キャンセル
+                </button>
+              )}
+              <button
+                type="submit"
+                className="ios-btn"
+                style={{ padding: '8px 16px', fontSize: '13px', borderRadius: '10px', flex: 1 }}
+              >
+                診断する
+              </button>
+            </div>
+          </form>
         ) : (
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '16px', backgroundColor: '#FAFAFC', padding: '14px', borderRadius: '16px' }}>
-              {/* 円形プログレスリング */}
-              <div style={{ position: 'relative', width: '80px', height: '80px', flexShrink: 0 }}>
-                <svg height="80" width="80" style={{ transform: 'rotate(-90deg)' }}>
-                  <circle
-                    stroke="var(--ios-gray-light)"
-                    fill="transparent"
-                    strokeWidth={stroke}
-                    r={normalizedRadius}
-                    cx="40"
-                    cy="40"
-                  />
-                  <circle
-                    stroke={themeColor}
-                    fill="transparent"
-                    strokeWidth={stroke}
-                    strokeDasharray={circumference + ' ' + circumference}
-                    style={{ strokeDashoffset, transition: 'stroke-dashoffset 0.5s ease-in-out' }}
-                    r={normalizedRadius}
-                    cx="40"
-                    cy="40"
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <div style={{
-                  position: 'absolute',
-                  top: '50%',
-                  left: '50%',
-                  transform: 'translate(-50%, -50%)',
-                  fontSize: '16px',
-                  fontWeight: '800',
-                  fontFamily: 'Outfit',
-                  color: themeColor
-                }}>
-                  {dependencyScore}%
-                </div>
-              </div>
-
+          <div 
+            style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              gap: '14px', 
+              animation: 'fadeIn 0.5s ease-out',
+              padding: '10px 0' 
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '32px' }}>{icon}</span>
               <div>
-                <div style={{ fontSize: '12px', color: 'var(--ios-text-secondary)', fontWeight: 600 }}>あなたの浪費タイプ</div>
-                <div style={{ fontSize: '20px', fontWeight: '800', color: themeColor, margin: '2px 0 4px 0' }}>
-                  {dependencyType}
-                </div>
-                <div className="ios-badge" style={{ backgroundColor: themeBg, color: themeColor, fontSize: '10px', padding: '3px 8px' }}>
-                  依存度: {dependencyScore >= 70 ? '深刻' : dependencyScore >= 40 ? '中度' : '軽度'}
+                <div style={{ fontSize: '11px', color: 'var(--ios-text-secondary)', fontWeight: 600 }}>あなたのコンビニ依存タイプ</div>
+                <div style={{ fontSize: '20px', fontWeight: '800', color: color, marginTop: '2px' }}>
+                  {typeName}
                 </div>
               </div>
             </div>
 
-            <p style={{ fontSize: '13px', color: 'var(--ios-text-main)', lineHeight: '1.5', margin: '0 0 14px 0', fontWeight: '500' }}>
-              {dependencyDesc}
-            </p>
-
-            {/* 特徴リスト */}
-            {dependencyFeatures.length > 0 && (
-              <div style={{ marginBottom: '14px' }}>
-                <div style={{ fontSize: '11px', color: 'var(--ios-text-secondary)', fontWeight: '700', marginBottom: '6px' }}>主な特徴</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {dependencyFeatures.map((feat, i) => (
-                    <div key={i} style={{ fontSize: '12px', color: 'var(--ios-text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: themeColor }}></span>
-                      {feat}
-                    </div>
-                  ))}
-                </div>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '6px', fontWeight: '700' }}>
+                <span>月収に占めるコンビニ支出割合</span>
+                <span style={{ color: color, fontFamily: 'Outfit' }}>{roundedRate}%</span>
               </div>
-            )}
+              <div style={{ height: '10px', backgroundColor: 'var(--ios-gray-light)', borderRadius: '5px', overflow: 'hidden' }}>
+                <div 
+                  style={{ 
+                    width: `${Math.min(100, roundedRate)}%`, 
+                    height: '100%', 
+                    backgroundColor: color, 
+                    borderRadius: '5px',
+                    transition: 'width 0.8s ease-out'
+                  }}
+                ></div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: 'var(--ios-text-secondary)', marginTop: '6px', fontWeight: 600 }}>
+                <span>月平均コンビニ支出: ¥{monthlyConvenienceSpent.toLocaleString()}</span>
+                <span>月収: ¥{monthlyIncome.toLocaleString()}</span>
+              </div>
+            </div>
+
+            <div style={{ backgroundColor: '#FAFAFC', padding: '12px', borderRadius: '12px', borderLeft: `4px solid ${color}` }}>
+              <p style={{ fontSize: '13px', color: 'var(--ios-text-main)', margin: 0, fontWeight: '600', lineHeight: 1.4 }}>
+                {comment}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setIncomeInput(monthlyIncome.toString());
+                setIsEditingIncome(true);
+              }}
+              className="ios-btn ios-btn-secondary"
+              style={{ padding: '8px 16px', fontSize: '12px', borderRadius: '10px', width: 'auto', alignSelf: 'flex-start' }}
+            >
+              再診断（月収を変更）
+            </button>
           </div>
         )}
       </div>

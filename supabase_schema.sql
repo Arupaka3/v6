@@ -91,6 +91,7 @@ USING (auth.uid() = user_id);
 CREATE TABLE IF NOT EXISTS public.user_settings (
     user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     monthly_base_savings INTEGER DEFAULT 5000,
+    monthly_income BIGINT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -119,3 +120,6 @@ ON public.user_settings
 FOR UPDATE 
 USING (auth.uid() = user_id)
 WITH CHECK (auth.uid() = user_id);
+
+-- Migration for existing environments
+ALTER TABLE public.user_settings ADD COLUMN IF NOT EXISTS monthly_income bigint;
