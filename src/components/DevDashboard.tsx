@@ -334,6 +334,16 @@ const DevDashboard: React.FC<DevDashboardProps> = () => {
     fetchAllData();
   };
 
+  const deleteAllWishItems = async () => {
+    if (!window.confirm('本当にすべての欲しいものアイテムを削除しますか？')) return;
+    const { error } = await supabase
+      .from('wish_list')
+      .delete()
+      .eq('user_id', userId);
+    if (error) alert('全削除失敗: ' + error.message);
+    fetchAllData();
+  };
+
   // --- user_settings CRUD ---
   const handleSaveSettings = async () => {
     const { error } = await supabase
@@ -792,9 +802,14 @@ const DevDashboard: React.FC<DevDashboardProps> = () => {
           {activeTab === 'wish_list' && (
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <button onClick={injectWishPresets} style={{ backgroundColor: '#2C2C2E', border: '1px solid #34C759', color: '#34C759', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>
-                  サンプルデータを3件追加
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={injectWishPresets} style={{ backgroundColor: '#2C2C2E', border: '1px solid #34C759', color: '#34C759', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>
+                    サンプルデータを3件追加
+                  </button>
+                  <button onClick={deleteAllWishItems} style={{ backgroundColor: '#2C2C2E', border: '1px solid #FF3B30', color: '#FF3B30', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}>
+                    全データを削除
+                  </button>
+                </div>
                 <button onClick={handleAddWish} style={{ backgroundColor: '#34C759', color: '#FFF', border: 'none', padding: '8px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>
                   ＋ 新規追加
                 </button>
