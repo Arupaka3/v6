@@ -13,6 +13,12 @@ CREATE TABLE IF NOT EXISTS public.usage_history (
 -- Enable Row Level Security (RLS)
 ALTER TABLE public.usage_history ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist to prevent "already exists" errors
+DROP POLICY IF EXISTS "Users can view their own usage history" ON public.usage_history;
+DROP POLICY IF EXISTS "Users can insert their own usage history" ON public.usage_history;
+DROP POLICY IF EXISTS "Users can update their own usage history" ON public.usage_history;
+DROP POLICY IF EXISTS "Users can delete their own usage history" ON public.usage_history;
+
 -- Policy: Select policy (Only user's own data)
 CREATE POLICY "Users can view their own usage history" 
 ON public.usage_history 
@@ -52,6 +58,12 @@ CREATE TABLE IF NOT EXISTS public.wish_list (
 -- Enable Row Level Security (RLS) for wish_list
 ALTER TABLE public.wish_list ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist to prevent "already exists" errors
+DROP POLICY IF EXISTS "Users can view their own wish list" ON public.wish_list;
+DROP POLICY IF EXISTS "Users can insert their own wish list" ON public.wish_list;
+DROP POLICY IF EXISTS "Users can update their own wish list" ON public.wish_list;
+DROP POLICY IF EXISTS "Users can delete their own wish list" ON public.wish_list;
+
 -- Policies for wish_list
 CREATE POLICY "Users can view their own wish list" 
 ON public.wish_list 
@@ -85,6 +97,11 @@ CREATE TABLE IF NOT EXISTS public.user_settings (
 
 -- Enable Row Level Security (RLS) for user_settings
 ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they exist to prevent "already exists" errors
+DROP POLICY IF EXISTS "Users can view their own settings" ON public.user_settings;
+DROP POLICY IF EXISTS "Users can insert their own settings" ON public.user_settings;
+DROP POLICY IF EXISTS "Users can update their own settings" ON public.user_settings;
 
 -- Policies for user_settings
 CREATE POLICY "Users can view their own settings" 
