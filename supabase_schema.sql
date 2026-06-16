@@ -37,3 +37,68 @@ CREATE POLICY "Users can delete their own usage history"
 ON public.usage_history 
 FOR DELETE 
 USING (auth.uid() = user_id);
+
+
+-- Create wish_list table (NEW)
+CREATE TABLE IF NOT EXISTS public.wish_list (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    price INTEGER NOT NULL,
+    current_savings INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Enable Row Level Security (RLS) for wish_list
+ALTER TABLE public.wish_list ENABLE ROW LEVEL SECURITY;
+
+-- Policies for wish_list
+CREATE POLICY "Users can view their own wish list" 
+ON public.wish_list 
+FOR SELECT 
+USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own wish list" 
+ON public.wish_list 
+FOR INSERT 
+WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own wish list" 
+ON public.wish_list 
+FOR UPDATE 
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own wish list" 
+ON public.wish_list 
+FOR DELETE 
+USING (auth.uid() = user_id);
+
+
+-- Create user_settings table (NEW)
+CREATE TABLE IF NOT EXISTS public.user_settings (
+    user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    monthly_base_savings INTEGER DEFAULT 5000,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Enable Row Level Security (RLS) for user_settings
+ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY;
+
+-- Policies for user_settings
+CREATE POLICY "Users can view their own settings" 
+ON public.user_settings 
+FOR SELECT 
+USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own settings" 
+ON public.user_settings 
+FOR INSERT 
+WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own settings" 
+ON public.user_settings 
+FOR UPDATE 
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);

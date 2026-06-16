@@ -30,12 +30,13 @@ function App() {
     monthlyAmountLimit: 10000,
     monthlyCountLimit: 12
   });
-  const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([
-    { id: 'g1', name: 'Nintendo Switch 2', price: 50000, createdAt: '2026-05-15' },
-    { id: 'g2', name: 'AirPods Pro', price: 35000, createdAt: '2026-05-20' }
-  ]);
-  const [linkedPayments, setLinkedPayments] = useState<string[]>([]);
+  
+  // 欲しいもの目標 (Supabaseで永続化)
+  const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
+  // 基本月間貯蓄額 (Supabaseで永続化)
   const [monthlyBaseSavings, setMonthlyBaseSavings] = useState<number>(5000);
+
+  const [linkedPayments, setLinkedPayments] = useState<string[]>([]);
 
   // ログインセッションの監視
   useEffect(() => {
@@ -63,7 +64,6 @@ function App() {
 
       const mapped: Receipt[] = (data || []).map((row: any) => {
         const itemsData = row.items;
-        // itemsがオブジェクトで list と isImpulse が含まれているか確認
         const list = (itemsData && typeof itemsData === 'object' && 'list' in itemsData) 
           ? itemsData.list 
           : (Array.isArray(itemsData) ? itemsData : []);
@@ -91,16 +91,77 @@ function App() {
     }
   };
 
-  // セッション変更時にデータを取得する
+  // Supabaseから欲しいものリストを取得する
+  const fetchSavingsGoals = async () => {
+    if (!session) return;
+    try {
+      const { data, error } = await supabase
+        .from('wish_list')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      const mapped: SavingsGoal[] = (data || []).map((row: any) => ({
+        id: row.id,
+        name: row.name,
+        price: row.price,
+        createdAt: row.created_at,
+        currentSavings: row.current_savings || 0
+      }));
+
+      setSavingsGoals(mapped);
+    } catch (e) {
+      console.error('Failed to fetch savings goals from Supabase', e);
+    }
+  };
+
+  // Supabaseから基本貯蓄額設定を取得する
+  const fetchBaseSavings = async () => {
+    if (!session) return;
+    try {
+      const { data, error } = await supabase
+        .from('user_settings')
+        .select('monthly_base_savings')
+        .eq('user_id', session.user.id)
+        .single();
+
+      if (error) {
+        // レコードが存在しない場合はデフォルト5000円でレコードを初期作成
+        if (error.code === 'PGRST116') {
+          const { error: insertError } = await supabase
+            .from('user_settings')
+            .insert({
+              user_id: session.user.id,
+              monthly_base_savings: 5000
+            });
+          if (insertError) throw insertError;
+          setMonthlyBaseSavings(5000);
+          return;
+        }
+        throw error;
+      }
+
+      setMonthlyBaseSavings(data.monthly_base_savings);
+    } catch (e) {
+      console.error('Failed to fetch base savings from Supabase', e);
+    }
+  };
+
+  // セッション変更時に全てのクラウドデータを取得する
   useEffect(() => {
     if (session) {
       fetchReceipts();
+      fetchSavingsGoals();
+      fetchBaseSavings();
     } else {
       setReceipts([]);
+      setSavingsGoals([]);
+      setMonthlyBaseSavings(5000);
     }
   }, [session]);
 
-  // ローカルストレージから目標等のデータを読み込む（レシート以外のステート）
+  // ローカルストレージからの読込（クラウド移行しない補助設定）
   useEffect(() => {
     // 1. 節約目標
     const savedSpending = localStorage.getItem('cobaco_spending_goal');
@@ -112,33 +173,13 @@ function App() {
       }
     }
 
-    // 2. 欲しいもの貯金目標
-    const savedSavings = localStorage.getItem('cobaco_savings_goals');
-    if (savedSavings) {
-      try {
-        setSavingsGoals(JSON.parse(savedSavings));
-      } catch (e) {
-        console.error('Failed to parse savings goals', e);
-      }
-    }
-
-    // 3. 電子決済連携
+    // 2. 電子決済連携
     const savedPayments = localStorage.getItem('cobaco_linked_payments');
     if (savedPayments) {
       try {
         setLinkedPayments(JSON.parse(savedPayments));
       } catch (e) {
         console.error('Failed to parse linked payments', e);
-      }
-    }
-
-    // 4. 基本の月間貯蓄額
-    const savedBaseSavings = localStorage.getItem('cobaco_base_savings');
-    if (savedBaseSavings) {
-      try {
-        setMonthlyBaseSavings(Number(savedBaseSavings));
-      } catch (e) {
-        console.error('Failed to parse base savings', e);
       }
     }
   }, []);
@@ -251,33 +292,68 @@ function App() {
     triggerNotification('節約目標を更新しました 🎯');
   };
 
-  // 基本貯蓄額の更新
-  const handleUpdateBaseSavings = (amount: number) => {
-    setMonthlyBaseSavings(amount);
-    localStorage.setItem('cobaco_base_savings', String(amount));
-    triggerNotification('基本の月間貯蓄額を更新しました 💰');
+  // 基本貯蓄額の更新 (Supabaseに保存)
+  const handleUpdateBaseSavings = async (amount: number) => {
+    if (!session) return;
+    try {
+      const { error } = await supabase
+        .from('user_settings')
+        .upsert({
+          user_id: session.user.id,
+          monthly_base_savings: amount,
+          updated_at: new Date().toISOString()
+        });
+
+      if (error) throw error;
+
+      setMonthlyBaseSavings(amount);
+      triggerNotification('基本の月間貯蓄額を更新しました 💰');
+    } catch (e) {
+      console.error('Failed to update base savings in Supabase', e);
+      triggerNotification('更新に失敗しました ❌');
+    }
   };
 
-  // 欲しいものの追加
-  const handleAddSavingsGoal = (name: string, price: number) => {
-    const newGoal: SavingsGoal = {
-      id: Date.now().toString(),
-      name,
-      price,
-      createdAt: new Date().toISOString().split('T')[0]
-    };
-    const updated = [...savingsGoals, newGoal];
-    setSavingsGoals(updated);
-    localStorage.setItem('cobaco_savings_goals', JSON.stringify(updated));
-    triggerNotification('欲しいものを追加しました 🛍️');
+  // 欲しいものの追加 (Supabaseに保存)
+  const handleAddSavingsGoal = async (name: string, price: number, currentSavings: number = 0) => {
+    if (!session) return;
+    try {
+      const { error } = await supabase
+        .from('wish_list')
+        .insert({
+          user_id: session.user.id,
+          name,
+          price,
+          current_savings: currentSavings
+        });
+
+      if (error) throw error;
+
+      triggerNotification('欲しいものを追加しました 🛍️');
+      fetchSavingsGoals();
+    } catch (e) {
+      console.error('Failed to add savings goal to Supabase', e);
+      triggerNotification('追加に失敗しました ❌');
+    }
   };
 
-  // 欲しいものの削除
-  const handleDeleteSavingsGoal = (id: string) => {
-    const updated = savingsGoals.filter(g => g.id !== id);
-    setSavingsGoals(updated);
-    localStorage.setItem('cobaco_savings_goals', JSON.stringify(updated));
-    triggerNotification('欲しいものを削除しました 🗑️');
+  // 欲しいものの削除 (Supabaseから削除)
+  const handleDeleteSavingsGoal = async (id: string) => {
+    if (!session) return;
+    try {
+      const { error } = await supabase
+        .from('wish_list')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      triggerNotification('欲しいものを削除しました 🗑️');
+      fetchSavingsGoals();
+    } catch (e) {
+      console.error('Failed to delete savings goal from Supabase', e);
+      triggerNotification('削除に失敗しました ❌');
+    }
   };
 
   // 電子決済の自動連携とモックデータ追加 (Supabaseに保存)

@@ -15,6 +15,7 @@ export interface SavingsGoal {
   name: string;
   price: number;
   createdAt: string;
+  currentSavings: number;
 }
 
 export interface SpendingGoal {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Target, TrendingUp, PiggyBank, Plus, Trash2, Sliders, ChevronDown } from 'lucide-react';
+import { Target, TrendingUp, PiggyBank, Plus, Trash2, Sliders, ChevronDown, Sparkles } from 'lucide-react';
 import type { Receipt, SavingsGoal, SpendingGoal } from '../types';
 
 interface GoalsViewProps {
@@ -8,7 +8,7 @@ interface GoalsViewProps {
   savingsGoals: SavingsGoal[];
   monthlyBaseSavings: number;
   onUpdateSpendingGoal: (goal: SpendingGoal) => void;
-  onAddSavingsGoal: (name: string, price: number) => void;
+  onAddSavingsGoal: (name: string, price: number, currentSavings: number) => void;
   onDeleteSavingsGoal: (id: string) => void;
   onUpdateBaseSavings: (amount: number) => void;
 }
@@ -23,17 +23,38 @@ const GoalsView: React.FC<GoalsViewProps> = ({
   onDeleteSavingsGoal,
   onUpdateBaseSavings
 }) => {
-  // 今月の支出合計と利用回数の算出 (5月中)
-  const thisMonthReceipts = receipts.filter(r => r.date.startsWith('2026-05'));
+  // 1. 利用履歴から月間支出を算出 (リアルタイム日付基準)
+  const today = new Date();
+  const thisMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  
+  // 今月のコンビニ支出と回数
+  const thisMonthReceipts = receipts.filter(r => r.date.startsWith(thisMonthStr));
   const currentAmount = thisMonthReceipts.reduce((sum, r) => sum + r.amount, 0);
   const currentCount = thisMonthReceipts.length;
 
-  // 削減率スライダー (未来予測用、デフォルト50%)
-  const [reductionRate, setReductionRate] = useState<number>(50);
+  // 過去30日間の総支出
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const last30DaysReceipts = receipts.filter(r => new Date(r.date) >= thirtyDaysAgo);
+  const last30DaysSpent = last30DaysReceipts.reduce((sum, r) => sum + r.amount, 0);
+
+  // 1か月あたりの平均支出
+  let monthlyAverageSpent = 0;
+  if (receipts.length > 0) {
+    const totalSpent = receipts.reduce((sum, r) => sum + r.amount, 0);
+    const dates = receipts.map(r => new Date(r.date).getTime());
+    const oldestDate = new Date(Math.min(...dates));
+    const monthDiff = (today.getFullYear() - oldestDate.getFullYear()) * 12 + (today.getMonth() - oldestDate.getMonth()) + 1;
+    monthlyAverageSpent = Math.round(totalSpent / Math.max(1, monthDiff));
+  }
+
+  // 未来予測削減率の選択状態 (要件3: 10%, 20%, 30%, 50% から選択)
+  const [reductionRate, setReductionRate] = useState<10 | 20 | 30 | 50>(30);
 
   // 欲しいもの追加用フォーム
   const [newItemName, setNewItemName] = useState('');
   const [newItemPrice, setNewItemPrice] = useState<number>(0);
+  const [newItemSavings, setNewItemSavings] = useState<number>(0); // 現在の貯蓄額
   const [showAddForm, setShowAddForm] = useState(false);
 
   // 目標設定フォーム
@@ -45,7 +66,7 @@ const GoalsView: React.FC<GoalsViewProps> = ({
   const [editBaseSavings, setEditBaseSavings] = useState(monthlyBaseSavings);
   const [isEditingBaseSavings, setIsEditingBaseSavings] = useState(false);
 
-  // 達成率計算
+  // 達成率計算 (予算上限に対する進捗)
   const amountProgress = Math.min((currentAmount / spendingGoal.monthlyAmountLimit) * 100, 100);
   const countProgress = Math.min((currentCount / spendingGoal.monthlyCountLimit) * 100, 100);
 
@@ -76,25 +97,21 @@ const GoalsView: React.FC<GoalsViewProps> = ({
   const handleAddSavings = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItemName || newItemPrice <= 0) return;
-    onAddSavingsGoal(newItemName, newItemPrice);
+    onAddSavingsGoal(newItemName, newItemPrice, newItemSavings);
     setNewItemName('');
     setNewItemPrice(0);
+    setNewItemSavings(0);
     setShowAddForm(false);
   };
 
-  // 未来予測計算ロジック
-  // props の monthlyBaseSavings を基本貯蓄額として使用
-  const BASE_MONTHLY_SAVINGS = monthlyBaseSavings;
-  // コンビニの1ヶ月の平均支出（現在の月間支出目安とする）
-  const monthlySpent = currentAmount > 0 ? currentAmount : 8000; 
-  // 削減による浮くお金 (月額)
+  // 未来予測用コンビニ支出目安 (過去30日間、または月平均、データ無し時は8,000円をフォールバック)
+  const monthlySpent = monthlyAverageSpent > 0 ? monthlyAverageSpent : (last30DaysSpent > 0 ? last30DaysSpent : 8000);
+  
+  // 削減による節約可能額 (月額) (要件2)
   const monthlyReductionSavings = Math.round(monthlySpent * (reductionRate / 100));
-  // 合計の月間貯蓄見込み額
-  const totalMonthlySavings = BASE_MONTHLY_SAVINGS + monthlyReductionSavings;
-
-  // 累積でのコンビニ節約による貯金実績（モック値。これまでにコンビニ節約でいくら貯めたか）
-  // ユーザーが節約行動を始めてからの実績を表現（例: 22,000円）
-  const accumulatedSavings = 18500;
+  
+  // 合計の月間貯蓄可能額
+  const totalMonthlySavings = monthlyBaseSavings + monthlyReductionSavings;
 
   return (
     <div>
@@ -102,11 +119,37 @@ const GoalsView: React.FC<GoalsViewProps> = ({
         <span>目標・予測</span>
       </div>
 
-      {/* --- Section 1: 節約目標設定機能 --- */}
+      {/* --- Section 1: 現在のコンビニ支出実績 (要件1) --- */}
+      <div className="ios-card" style={{ background: '#FAFAFC', border: '1px solid var(--ios-border)', padding: '16px' }}>
+        <span style={{ fontSize: '14px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+          <TrendingUp size={16} color="var(--ios-primary)" />
+          コンビニ支出実績 (実データ)
+        </span>
+        
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ flex: 1, backgroundColor: '#FFFFFF', padding: '10px 8px', borderRadius: '12px', textAlign: 'center', border: '0.5px solid var(--ios-border)' }}>
+            <span style={{ fontSize: '9px', color: 'var(--ios-text-secondary)', display: 'block', marginBottom: '4px' }}>今月の支出</span>
+            <span style={{ fontSize: '13px', fontWeight: '800', fontFamily: 'Outfit' }}>¥{currentAmount.toLocaleString()}</span>
+            <span style={{ fontSize: '8px', color: 'var(--ios-text-secondary)', display: 'block', marginTop: '2px' }}>{currentCount}回利用</span>
+          </div>
+          <div style={{ flex: 1, backgroundColor: '#FFFFFF', padding: '10px 8px', borderRadius: '12px', textAlign: 'center', border: '0.5px solid var(--ios-border)' }}>
+            <span style={{ fontSize: '9px', color: 'var(--ios-text-secondary)', display: 'block', marginBottom: '4px' }}>過去30日間</span>
+            <span style={{ fontSize: '13px', fontWeight: '800', fontFamily: 'Outfit' }}>¥{last30DaysSpent.toLocaleString()}</span>
+            <span style={{ fontSize: '8px', color: 'var(--ios-text-secondary)', display: 'block', marginTop: '2px' }}>総額</span>
+          </div>
+          <div style={{ flex: 1, backgroundColor: '#FFFFFF', padding: '10px 8px', borderRadius: '12px', textAlign: 'center', border: '0.5px solid var(--ios-border)' }}>
+            <span style={{ fontSize: '9px', color: 'var(--ios-text-secondary)', display: 'block', marginBottom: '4px' }}>1ヶ月平均</span>
+            <span style={{ fontSize: '13px', fontWeight: '800', fontFamily: 'Outfit' }}>¥{monthlyAverageSpent.toLocaleString()}</span>
+            <span style={{ fontSize: '8px', color: 'var(--ios-text-secondary)', display: 'block', marginTop: '2px' }}>全期間平均</span>
+          </div>
+        </div>
+      </div>
+
+      {/* --- Section 2: 今月の節約目標設定機能 --- */}
       <div className="ios-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-          <span style={{ fontSize: '15px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Target size={18} color="var(--ios-primary)" />
+          <span style={{ fontSize: '14px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Target size={16} color="var(--ios-primary)" />
             今月の節約目標
           </span>
           <button
@@ -213,12 +256,12 @@ const GoalsView: React.FC<GoalsViewProps> = ({
         )}
       </div>
 
-      {/* --- Section 1.5: 基本の月間貯蓄額設定機能 --- */}
+      {/* --- Section 3: 月間貯蓄額設定 (要件7) --- */}
       <div className="ios-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-          <span style={{ fontSize: '15px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <PiggyBank size={18} color="var(--ios-primary)" />
-            基本の月間貯蓄額
+          <span style={{ fontSize: '14px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <PiggyBank size={16} color="var(--ios-primary)" />
+            月間貯蓄額（基本貯金ペース）
           </span>
           <button
             onClick={() => {
@@ -251,7 +294,7 @@ const GoalsView: React.FC<GoalsViewProps> = ({
                 value={editBaseSavings || ''}
                 onChange={e => setEditBaseSavings(Number(e.target.value))}
                 min="0"
-                step="1000"
+                step="500"
                 required
                 style={{ padding: '8px 12px', fontSize: '14px' }}
               />
@@ -266,18 +309,18 @@ const GoalsView: React.FC<GoalsViewProps> = ({
               ¥{monthlyBaseSavings.toLocaleString()}
             </span>
             <span style={{ fontSize: '12px', color: 'var(--ios-text-secondary)', marginLeft: '6px' }}>
-              /月 (コンビニ削減分を含まないベース貯金額)
+              /月 (コンビニ削減分を含まない通常の貯金ペース)
             </span>
           </div>
         )}
       </div>
 
-      {/* --- Section 2: 未来予測機能 (最重要) --- */}
+      {/* --- Section 4: 未来予測シミュレーション (要件2, 3, 4, 5, 8) --- */}
       <div className="ios-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-          <span style={{ fontSize: '15px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <PiggyBank size={18} color="var(--ios-orange)" />
-            未来予測・欲しいもの貯金
+          <span style={{ fontSize: '14px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <PiggyBank size={16} color="var(--ios-orange)" />
+            未来予測・欲しいもの達成シミュレーション
           </span>
           <button
             onClick={() => setShowAddForm(!showAddForm)}
@@ -300,31 +343,45 @@ const GoalsView: React.FC<GoalsViewProps> = ({
 
         {showAddForm && (
           <form onSubmit={handleAddSavings} style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px', backgroundColor: '#FFFBF5', padding: '12px', borderRadius: '14px', border: '1px solid rgba(255, 149, 0, 0.15)' }}>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <div style={{ flex: 2 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div>
                 <label className="ios-input-label" style={{ fontSize: '11px' }}>欲しいもの</label>
                 <input
                   type="text"
                   className="ios-input"
                   value={newItemName}
                   onChange={e => setNewItemName(e.target.value)}
-                  placeholder="例: AirPods Pro"
+                  placeholder="例: Nintendo Switch 2"
                   required
                   style={{ padding: '8px 12px', fontSize: '13px' }}
                 />
               </div>
-              <div style={{ flex: 1.5 }}>
-                <label className="ios-input-label" style={{ fontSize: '11px' }}>価格 (円)</label>
-                <input
-                  type="number"
-                  className="ios-input"
-                  value={newItemPrice || ''}
-                  onChange={e => setNewItemPrice(Number(e.target.value))}
-                  placeholder="金額"
-                  min="100"
-                  required
-                  style={{ padding: '8px 12px', fontSize: '13px' }}
-                />
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ flex: 1 }}>
+                  <label className="ios-input-label" style={{ fontSize: '11px' }}>価格 (円)</label>
+                  <input
+                    type="number"
+                    className="ios-input"
+                    value={newItemPrice || ''}
+                    onChange={e => setNewItemPrice(Number(e.target.value))}
+                    placeholder="金額"
+                    min="100"
+                    required
+                    style={{ padding: '8px 12px', fontSize: '13px' }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label className="ios-input-label" style={{ fontSize: '11px' }}>現在の貯蓄額 (任意)</label>
+                  <input
+                    type="number"
+                    className="ios-input"
+                    value={newItemSavings || ''}
+                    onChange={e => setNewItemSavings(Number(e.target.value))}
+                    placeholder="すでに貯まった額"
+                    min="0"
+                    style={{ padding: '8px 12px', fontSize: '13px' }}
+                  />
+                </div>
               </div>
             </div>
             <button type="submit" className="ios-btn" style={{ backgroundColor: 'var(--ios-orange)', padding: '8px 12px', fontSize: '13px', borderRadius: '8px' }}>
@@ -333,54 +390,71 @@ const GoalsView: React.FC<GoalsViewProps> = ({
           </form>
         )}
 
-        {/* 節約効果シミュレーションスライダー */}
+        {/* 削減率選択コントロール (要件3: 10%, 20%, 30%, 50% 押しボタン) */}
         <div style={{ backgroundColor: '#FAFAFC', padding: '16px', borderRadius: '16px', marginBottom: '16px', border: '1px solid var(--ios-border)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
             <span style={{ fontSize: '12px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
               <Sliders size={14} color="var(--ios-orange)" />
-              コンビニ利用削減シミュレーター
+              コンビニ削減シミュレーション設定
             </span>
             <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--ios-orange)', fontFamily: 'Outfit' }}>
               {reductionRate}% 削減
             </span>
           </div>
 
-          <p style={{ fontSize: '10px', color: 'var(--ios-text-secondary)', lineHeight: '1.4', margin: '0 0 12px 0' }}>
-            コンビニの無駄遣い（今月のコンビニ支出: ¥{monthlySpent.toLocaleString()}）を削減し、貯金に回す割合を設定します。
+          <p style={{ fontSize: '10px', color: 'var(--ios-text-secondary)', lineHeight: '1.4', margin: '0 0 14px 0' }}>
+            コンビニの無駄遣い目安 (月間: ¥{monthlySpent.toLocaleString()}) から、何%削減して貯蓄に回すかを選択します。
           </p>
 
-          <input
-            type="range"
-            min="0"
-            max="100"
-            step="10"
-            value={reductionRate}
-            onChange={e => setReductionRate(Number(e.target.value))}
-            style={{
-              width: '100%',
-              accentColor: 'var(--ios-orange)',
-              cursor: 'pointer',
-              marginBottom: '14px'
-            }}
-          />
+          {/* セグメンテッド削減率切り替えボタン */}
+          <div style={{
+            display: 'flex',
+            backgroundColor: 'rgba(120, 120, 128, 0.08)',
+            padding: '2px',
+            borderRadius: '9px',
+            marginBottom: '16px'
+          }}>
+            {([10, 20, 30, 50] as const).map(rate => (
+              <button
+                key={rate}
+                type="button"
+                onClick={() => setReductionRate(rate)}
+                style={{
+                  flex: 1,
+                  border: 'none',
+                  background: reductionRate === rate ? '#FFFFFF' : 'transparent',
+                  boxShadow: reductionRate === rate ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                  borderRadius: '7px',
+                  padding: '8px 0',
+                  fontSize: '13px',
+                  fontWeight: reductionRate === rate ? '600' : '500',
+                  color: reductionRate === rate ? 'var(--ios-orange)' : 'var(--ios-text-secondary)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                {rate}%
+              </button>
+            ))}
+          </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', borderTop: '0.5px solid var(--ios-border)', paddingTop: '10px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', borderTop: '0.5px solid var(--ios-border)', paddingTop: '12px' }}>
             <div>
-              <span style={{ color: 'var(--ios-text-secondary)', display: 'block', fontSize: '9px' }}>追加の節約貯金額</span>
+              <span style={{ color: 'var(--ios-text-secondary)', display: 'block', fontSize: '9px' }}>追加の月間節約額 (浮くお金)</span>
               <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--ios-orange)', fontFamily: 'Outfit' }}>
-                +¥{monthlyReductionSavings.toLocaleString()} <span style={{ fontSize: '10px', fontWeight: '500' }}>/月</span>
+                +¥{monthlyReductionSavings.toLocaleString()} <span style={{ fontSize: '9px', fontWeight: '500' }}>/月</span>
               </span>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <span style={{ color: 'var(--ios-text-secondary)', display: 'block', fontSize: '9px' }}>月間貯蓄合計（基本 ¥5,000 含）</span>
+              <span style={{ color: 'var(--ios-text-secondary)', display: 'block', fontSize: '9px' }}>月間総貯蓄予測 (基本 ¥{monthlyBaseSavings.toLocaleString()} 含)</span>
               <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--ios-text-main)', fontFamily: 'Outfit' }}>
-                ¥{totalMonthlySavings.toLocaleString()} <span style={{ fontSize: '10px', fontWeight: '500' }}>/月</span>
+                ¥{totalMonthlySavings.toLocaleString()} <span style={{ fontSize: '9px', fontWeight: '500' }}>/月</span>
               </span>
             </div>
           </div>
         </div>
 
-        {/* 欲しいものリストとシミュレーション結果 */}
+        {/* 欲しいものリストとシミュレーション結果カード (要件4, 5, 6, 8) */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {savingsGoals.length === 0 ? (
             <div style={{ textAlign: 'center', color: 'var(--ios-text-secondary)', padding: '20px 0', fontSize: '12px' }}>
@@ -388,23 +462,25 @@ const GoalsView: React.FC<GoalsViewProps> = ({
             </div>
           ) : (
             savingsGoals.map(goal => {
-              // 欲しいものの進捗率
-              const progressPercent = Math.min(Math.round((accumulatedSavings / goal.price) * 100), 100);
+              const currentSavings = goal.currentSavings || 0;
+              // 達成率 (要件6: 未設定時は0%)
+              const progressPercent = goal.price > 0 ? Math.min(Math.round((currentSavings / goal.price) * 100), 100) : 0;
+              const remainingPrice = Math.max(0, goal.price - currentSavings);
 
               // 削減率を適用した場合の購入までにかかる月数
-              // (価格 - 累積貯金) / 月間貯蓄額
-              const remainingPrice = Math.max(0, goal.price - accumulatedSavings);
               const monthsNeededWithReduction = remainingPrice > 0 
-                ? Math.ceil(remainingPrice / totalMonthlySavings) 
+                ? (totalMonthlySavings > 0 ? Math.ceil(remainingPrice / totalMonthlySavings) : Infinity) 
                 : 0;
 
               // 削減率 0% (追加の節約なし) の場合にかかる月数
               const monthsNeededNoReduction = remainingPrice > 0 
-                ? Math.ceil(remainingPrice / BASE_MONTHLY_SAVINGS) 
+                ? (monthlyBaseSavings > 0 ? Math.ceil(remainingPrice / monthlyBaseSavings) : Infinity) 
                 : 0;
 
-              // 短縮される期間
-              const monthsSaved = Math.max(0, monthsNeededNoReduction - monthsNeededWithReduction);
+              // 短縮される期間 (要件8)
+              const monthsSaved = (monthsNeededNoReduction !== Infinity && monthsNeededWithReduction !== Infinity)
+                ? Math.max(0, monthsNeededNoReduction - monthsNeededWithReduction)
+                : 0;
 
               return (
                 <div 
@@ -420,8 +496,8 @@ const GoalsView: React.FC<GoalsViewProps> = ({
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                     <div>
                       <div style={{ fontSize: '14px', fontWeight: '800' }}>{goal.name}</div>
-                      <div style={{ fontSize: '12px', color: 'var(--ios-text-secondary)', fontFamily: 'Outfit', marginTop: '2px' }}>
-                        ¥{goal.price.toLocaleString()} <span style={{ fontSize: '10px' }}>(現在実績 ¥{accumulatedSavings.toLocaleString()} 貯金済)</span>
+                      <div style={{ fontSize: '11px', color: 'var(--ios-text-secondary)', fontFamily: 'Outfit', marginTop: '2px' }}>
+                        価格: ¥{goal.price.toLocaleString()} <span style={{ fontSize: '10px' }}>(現在実績 ¥{currentSavings.toLocaleString()} 貯金済)</span>
                       </div>
                     </div>
                     
@@ -440,7 +516,7 @@ const GoalsView: React.FC<GoalsViewProps> = ({
                   </div>
 
                   {/* 欲しいものの進捗バー */}
-                  <div style={{ marginBottom: '12px' }}>
+                  <div style={{ marginBottom: '14px' }}>
                     <div style={{ height: '8px', backgroundColor: 'var(--ios-gray-light)', borderRadius: '4px', overflow: 'hidden' }}>
                       <div 
                         style={{ 
@@ -458,24 +534,63 @@ const GoalsView: React.FC<GoalsViewProps> = ({
                     </div>
                   </div>
 
-                  {/* AI予測テキスト */}
-                  <div style={{ backgroundColor: 'linear-gradient(135deg, #FFFDF9 0%, #FFF9F0 100%)', borderLeft: '3px solid var(--ios-orange)', padding: '10px 12px', borderRadius: '0 8px 8px 0', fontSize: '11px', lineHeight: '1.5' }}>
+                  {/* シミュレーション比較カード (要件5, 8) */}
+                  <div style={{ 
+                    background: 'linear-gradient(135deg, #FFFDF9 0%, #FFF9F0 100%)', 
+                    borderLeft: '3px solid var(--ios-orange)', 
+                    padding: '10px 12px', 
+                    borderRadius: '0 8px 8px 0', 
+                    fontSize: '11px', 
+                    lineHeight: '1.5' 
+                  }}>
                     {remainingPrice === 0 ? (
                       <span style={{ color: 'var(--ios-primary)', fontWeight: '700' }}>
                         🎉 おめでとうございます！目標金額を達成しました！購入可能です。
                       </span>
                     ) : (
                       <>
-                        <div style={{ fontWeight: '700', color: 'var(--ios-text-main)' }}>
-                          AI分析結果: 今の節約ペースの場合{' '}
-                          <span style={{ color: 'var(--ios-orange)', fontSize: '13px' }}>
-                            「あと{monthsNeededWithReduction}ヶ月で購入可能」
-                          </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '0.5px solid rgba(0,0,0,0.05)', paddingBottom: '4px' }}>
+                            <span style={{ color: 'var(--ios-text-secondary)' }}>現在のコンビニ支出:</span>
+                            <span style={{ fontWeight: '700' }}>¥{monthlySpent.toLocaleString()} /月</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '0.5px solid rgba(0,0,0,0.05)', paddingBottom: '4px' }}>
+                            <span style={{ color: 'var(--ios-text-secondary)' }}>{reductionRate}% 削減時の節約可能額:</span>
+                            <span style={{ fontWeight: '700', color: 'var(--ios-orange)' }}>¥{monthlyReductionSavings.toLocaleString()} /月</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '700', color: 'var(--ios-text-main)' }}>
+                            <span>購入予測 (削減後ペース):</span>
+                            <span>
+                              {monthsNeededWithReduction === Infinity ? '貯蓄ペース未設定' : `約 ${monthsNeededWithReduction} ヶ月後`}
+                            </span>
+                          </div>
                         </div>
-                        {reductionRate > 0 && monthsSaved > 0 && (
-                          <div style={{ color: '#1B9A5E', fontWeight: '700', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                            <TrendingUp size={12} />
-                            コンビニ利用を{reductionRate}%削減すると、{monthsSaved}ヶ月早く購入できます！
+
+                        {/* シミュレーション比較 (要件8) */}
+                        {reductionRate > 0 && monthsSaved > 0 && monthsNeededNoReduction !== Infinity && (
+                          <div style={{ 
+                            marginTop: '8px', 
+                            padding: '6px 8px', 
+                            backgroundColor: 'var(--ios-primary-light)', 
+                            borderRadius: '6px', 
+                            color: '#1B9A5E', 
+                            fontWeight: '700',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '2px'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Sparkles size={12} />
+                              <span>削減シミュレーション結果：</span>
+                            </div>
+                            <div style={{ fontSize: '10px', color: 'var(--ios-text-secondary)', display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
+                              <span>現状のペース：約 {monthsNeededNoReduction} ヶ月</span>
+                              <span>➡</span>
+                              <span style={{ fontWeight: '800', color: '#1B9A5E' }}>{reductionRate}%削減：約 {monthsNeededWithReduction} ヶ月</span>
+                            </div>
+                            <div style={{ borderTop: '0.5px dashed rgba(27, 154, 94, 0.2)', paddingTop: '4px', marginTop: '4px', textAlign: 'center', fontSize: '11px' }}>
+                              🔥 購入まで <span style={{ fontSize: '13px', fontWeight: '800' }}>{monthsSaved} ヶ月短縮</span> できます！
+                            </div>
                           </div>
                         )}
                       </>
