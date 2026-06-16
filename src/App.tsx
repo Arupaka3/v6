@@ -1065,7 +1065,7 @@ function App() {
 
             {/* 開発者メニュー */}
             {/* TODO: remove before production release */}
-            {session.user.email === 's24g1115nm@chibatech.ac.jp' && (
+            {session.user.email?.toLowerCase() === 's24g1115nm@chibatech.ac.jp' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '0.5px solid var(--ios-border)', paddingTop: '16px', marginBottom: '8px' }}>
                 <span style={{ fontSize: '11px', color: 'var(--ios-red)', fontWeight: 800 }}>開発者メニュー</span>
                 <button
