@@ -1,3 +1,4 @@
+// TODO: remove before production release - dev only
 import { useState, useEffect } from 'react';
 import type { ActiveTab, Receipt, SpendingGoal, SavingsGoal, Streak, UserBadge } from './types';
 import TabBar from './components/TabBar';
@@ -8,6 +9,7 @@ import GoalsView from './components/GoalsView';
 import BadgesView from './components/BadgesView';
 import AuthView from './components/AuthView';
 import EditReceiptModal from './components/EditReceiptModal';
+import DevDashboard from './components/DevDashboard';
 import { supabase } from './lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import { X, LogOut } from 'lucide-react';
@@ -918,6 +920,10 @@ function App() {
     const interval = setInterval(updateTime, 60000);
     return () => clearInterval(interval);
   }, []);
+
+  if (window.location.pathname === '/dev') {
+    return <DevDashboard />;
+  }
 
   return (
     <div className="phone-frame">
