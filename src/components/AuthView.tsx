@@ -115,7 +115,7 @@ const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
           letterSpacing: '-0.5px',
           color: 'var(--ios-text-main)'
         }}>
-          ConviTrack
+          よりみちログ
         </h1>
         <p style={{
           fontSize: '13px',
