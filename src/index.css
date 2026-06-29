@@ -229,6 +229,7 @@ body {
   height: calc(63px + max(20px, env(safe-area-inset-bottom, 0px)));
   box-sizing: border-box;
   z-index: 998;
+  overflow: visible;
 }
 
 @media (max-width: 480px) {
@@ -254,7 +255,6 @@ body {
   transition: color 0.2s ease;
   padding-top: 6px;
   white-space: nowrap;
-  overflow: hidden;
 }
 
 .tab-item.active {
