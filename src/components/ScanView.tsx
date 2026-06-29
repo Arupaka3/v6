@@ -336,38 +336,68 @@ const ScanView: React.FC<ScanViewProps> = ({
             style={{ display: 'none' }} onChange={handleFileChange}
           />
 
-          {/* カメラで撮影（メインアクション） */}
-          <button
-            type="button"
-            className="ios-btn"
-            onClick={() => cameraInputRef.current?.click()}
-            style={{
-              padding: '18px 20px', fontSize: '16px', fontWeight: '800',
-              borderRadius: '18px', display: 'flex', alignItems: 'center',
-              justifyContent: 'center', gap: '10px',
-            }}
-          >
-            <Camera size={22} />
-            カメラで撮影
-          </button>
+          {/* カメラ撮影 / ギャラリー選択カード */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {/* カメラで撮影 */}
+            <div
+              role="button"
+              tabIndex={0}
+              style={{
+                border: '2.5px dashed var(--ios-gray-dark)',
+                borderRadius: '24px', display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: '#FFFFFF', cursor: 'pointer',
+                padding: '28px 20px', boxSizing: 'border-box', textAlign: 'center',
+              }}
+              onClick={() => cameraInputRef.current?.click()}
+              onKeyDown={e => e.key === 'Enter' && cameraInputRef.current?.click()}
+            >
+              <div style={{
+                width: '52px', height: '52px', borderRadius: '50%',
+                backgroundColor: 'var(--ios-primary-light)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'var(--ios-primary)', marginBottom: '10px',
+              }}>
+                <Camera size={26} />
+              </div>
+              <span style={{ fontSize: '15px', fontWeight: '800', marginBottom: '4px' }}>
+                カメラで撮影
+              </span>
+              <span style={{ fontSize: '11px', color: 'var(--ios-text-secondary)', lineHeight: '1.4' }}>
+                レシートをその場で撮影します
+              </span>
+            </div>
 
-          {/* 保存済み画像から選ぶ（サブアクション） */}
-          <button
-            type="button"
-            onClick={() => galleryInputRef.current?.click()}
-            style={{
-              padding: '18px 20px', fontSize: '16px', fontWeight: '800',
-              borderRadius: '18px', display: 'flex', alignItems: 'center',
-              justifyContent: 'center', gap: '10px',
-              border: '2px solid var(--ios-primary)',
-              backgroundColor: 'transparent',
-              color: 'var(--ios-primary)',
-              cursor: 'pointer',
-            }}
-          >
-            <Image size={22} />
-            保存済み画像から選ぶ
-          </button>
+            {/* 保存済み画像から選ぶ */}
+            <div
+              role="button"
+              tabIndex={0}
+              style={{
+                border: '2.5px dashed var(--ios-gray-dark)',
+                borderRadius: '24px', display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: '#FFFFFF', cursor: 'pointer',
+                padding: '28px 20px', boxSizing: 'border-box', textAlign: 'center',
+              }}
+              onClick={() => galleryInputRef.current?.click()}
+              onKeyDown={e => e.key === 'Enter' && galleryInputRef.current?.click()}
+            >
+              <div style={{
+                width: '52px', height: '52px', borderRadius: '50%',
+                backgroundColor: 'var(--ios-primary-light)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'var(--ios-primary)', marginBottom: '10px',
+              }}>
+                <Image size={26} />
+              </div>
+              <span style={{ fontSize: '15px', fontWeight: '800', marginBottom: '4px' }}>
+                保存済み画像から選ぶ
+              </span>
+              <span style={{ fontSize: '11px', color: 'var(--ios-text-secondary)', lineHeight: '1.4' }}>
+                カメラロールから画像を選択します
+              </span>
+            </div>
+          </div>
 
           {/* 手入力（テキストリンク風） */}
           <button
