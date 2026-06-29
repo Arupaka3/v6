@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
 import { Camera, Edit3, CheckCircle, CreditCard, Link, Check, RefreshCw } from 'lucide-react';
-import { scanReceipt } from '../lib/scanReceipt';
 import type { Receipt } from '../types';
 
 // OLD: OCR.Space implementation (replaced by Tesseract.js)
@@ -50,6 +49,7 @@ const ScanView: React.FC<ScanViewProps> = ({ onAddReceipt, linkedPayments, onLin
     setProgress(0);
 
     try {
+      const { scanReceipt } = await import('../lib/scanReceipt');
       const result = await scanReceipt(file, (p) => setProgress(p));
       setIsFirstScan(false);
 

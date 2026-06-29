@@ -7,4 +7,7 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['tesseract.js'],
   },
+  build: {
+    chunkSizeWarningLimit: 1000,
+  },
 })
