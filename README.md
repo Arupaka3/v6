@@ -59,3 +59,34 @@
    ```bash
    npm run dev
    ```
+
+---
+
+## ☁️ Vercelへのデプロイ手順
+
+### 環境変数の設定
+
+Vercelへデプロイする際は、`.env` ファイルをリポジトリにコミットせず、Vercelの管理画面から環境変数を設定してください。
+
+1. [Vercel Dashboard](https://vercel.com/dashboard) でプロジェクトを開く
+2. **Settings** → **Environment Variables** に移動
+3. 以下の2つの変数を追加する
+
+   | Name | Value |
+   |------|-------|
+   | `VITE_SUPABASE_URL` | SupabaseプロジェクトのURL |
+   | `VITE_SUPABASE_ANON_KEY` | Supabaseの anon/public キー |
+
+4. **Deployments** タブから **Redeploy** を実行する
+
+> ⚠️ `VITE_SUPABASE_ANON_KEY` はRLS（Row Level Security）が有効であればフロントエンドから参照しても安全ですが、GitHubのpublicリポジトリには直接コミットしないでください。
+
+---
+
+## 📷 OCR機能（Tesseract.js）
+
+レシートスキャンは [Tesseract.js](https://tesseract.projectnaptha.com/) を使用しており、完全無料・APIキー不要・サインイン不要で動作します。
+
+- 初回スキャン時は言語データのダウンロードに時間がかかります（2〜5秒程度）
+- 読み取り精度が低い場合は自動で手入力画面に切り替わります
+- 対応店舗：セブンイレブン / ファミリーマート / ローソン / ミニストップ
