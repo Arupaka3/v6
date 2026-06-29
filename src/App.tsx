@@ -540,7 +540,6 @@ function App() {
       const { receipts: r, streak: s } = await fetchReceipts();
       const b = await fetchUnlockedBadges();
       await checkAndUnlockBadges(r, s.currentStreak, spendingGoal, linkedPayments, b);
-      setActiveTab('home');
     } catch (e) {
       console.error('Failed to add receipt to Supabase', e);
       triggerNotification('保存に失敗しました ❌');
