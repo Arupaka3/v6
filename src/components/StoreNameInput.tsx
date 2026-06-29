@@ -80,41 +80,52 @@ const getNearbyConbini = async (): Promise<string[]> => {
   return [...new Set(stores)];
 };
 
-// ドロップダウンの1セクション
+// ドロップダウンの1セクション（タップ感度改善版）
 const DropdownSection: React.FC<{
   label: string;
   stores: string[];
   onSelect: (s: string) => void;
-}> = ({ label, stores, onSelect }) => (
-  <div>
-    <div style={{
-      padding: '7px 14px 4px',
-      fontSize: '11px', fontWeight: '700',
-      color: 'var(--ios-text-secondary)',
-      backgroundColor: '#F9F9FB',
-      borderBottom: '0.5px solid var(--ios-border)',
-    }}>
-      {label}
+}> = ({ label, stores, onSelect }) => {
+  const [pressedStore, setPressedStore] = useState<string | null>(null);
+
+  return (
+    <div>
+      <div style={{
+        padding: '7px 14px 4px',
+        fontSize: '11px', fontWeight: '700',
+        color: 'var(--ios-text-secondary)',
+        backgroundColor: '#F9F9FB',
+        borderBottom: '0.5px solid var(--ios-border)',
+      }}>
+        {label}
+      </div>
+      {stores.map(store => (
+        <button
+          key={store}
+          type="button"
+          onPointerDown={e => { e.preventDefault(); setPressedStore(store); onSelect(store); }}
+          onPointerUp={() => setPressedStore(null)}
+          onPointerLeave={() => setPressedStore(null)}
+          style={{
+            display: 'block', width: '100%', textAlign: 'left',
+            padding: '16px 20px',
+            minHeight: '52px',
+            border: 'none',
+            borderBottom: '1px solid #f0f0f0',
+            backgroundColor: pressedStore === store ? 'var(--ios-primary-light)' : 'transparent',
+            fontSize: '14px', fontWeight: '600',
+            color: 'var(--ios-text-main)', cursor: 'pointer',
+            userSelect: 'none',
+            WebkitTapHighlightColor: 'rgba(0,0,0,0.1)',
+            transition: 'background-color 0.1s ease',
+          }}
+        >
+          {store}
+        </button>
+      ))}
     </div>
-    {stores.map(store => (
-      <button
-        key={store}
-        type="button"
-        onPointerDown={e => { e.preventDefault(); onSelect(store); }}
-        style={{
-          display: 'block', width: '100%', textAlign: 'left',
-          padding: '11px 16px',
-          border: 'none', borderBottom: '0.5px solid var(--ios-border)',
-          backgroundColor: 'transparent',
-          fontSize: '14px', fontWeight: '600',
-          color: 'var(--ios-text-main)', cursor: 'pointer',
-        }}
-      >
-        {store}
-      </button>
-    ))}
-  </div>
-);
+  );
+};
 
 const StoreNameInput: React.FC<StoreNameInputProps> = ({ value, onChange, userId }) => {
   const [open, setOpen] = useState(false);
