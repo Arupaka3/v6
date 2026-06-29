@@ -74,49 +74,7 @@ export const scanReceipt = async (
     }
   }
 
-  // 商品名の抽出
-  // レシートの商品行パターン：「商品名　金額」または「商品名　数量×単価　金額」の形式が多い
-  const EXCLUDE_PATTERNS = [
-    /\d{2,4}[-–−]\d{3,4}[-–−]\d{4}/,          // 電話番号
-    /\(\d{2,4}\)\s*\d{3,4}[-–−]\d{4}/,         // 電話番号（括弧付き）
-    /TEL|FAX/i,                                  // TEL/FAX表記
-    /\d{1,2}:\d{2}/,                             // 時刻
-    /^[A-Za-z0-9\s\(\)\-\%\.\/]+$/,             // 日本語を含まない英数字のみ
-    /[A-Z]{6,}/,                                 // 6文字以上の英大文字羅列
-    /https?:|www\./,                             // URL
-    /丁目|番地|号室/,                            // 住所
-    /\d+%/,                                      // パーセント付き数値
-    /店|支店|本店/,                              // 店舗名系
-    /領収|レシート|明細|合計|小計|税|おつり|お釣|お預|日付/, // レシートヘッダー系
-    /ありがとう|またのご|いらっしゃいませ/,      // 挨拶文
-    /^\d+$/,                                     // 数字のみ
-    /^[ぁ-ん]{1,2}$/,                           // 1〜2文字のひらがなのみ
-    /会員|ポイント|番号|No\.|NO\./i,            // 会員番号系
-    /\d{4}[年\/]\d{1,2}[月\/]\d{1,2}/,         // 日付
-  ];
-
-  const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-  const extractedItems: string[] = [];
-
-  for (const line of lines) {
-    // 金額っぽい数字で終わる行を商品行と判定
-    const isMoneyLine = /\d{2,4}$/.test(line.replace(/[,，]/g, ''));
-
-    const isExcluded = EXCLUDE_PATTERNS.some(p => p.test(line));
-    const isTooShort = line.replace(/[\s\d¥￥,，]/g, '').length < 2;
-
-    if (isMoneyLine && !isExcluded && !isTooShort) {
-      const itemName = line
-        .replace(/[\s　]+\d[\d,，]*\s*$/, '')  // 末尾の金額を除去
-        .replace(/^\d+\s*/, '')               // 先頭の番号を除去
-        .trim();
-      if (itemName.length >= 2 && itemName.length <= 20) {
-        extractedItems.push(itemName);
-      }
-    }
-  }
-
-  const items = extractedItems.slice(0, 8);
+  const items: string[] = [];
 
   const confidence = amount !== null
     ? (data.confidence > 70 ? 'high' : 'medium')

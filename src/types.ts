@@ -36,13 +36,31 @@ export interface UserBadge {
   unlocked_at: string;
 }
 
+export const ITEM_CATEGORIES = [
+  'ホットスナック',
+  '冷凍食品',
+  '飲み物',
+  'おにぎり・パン',
+  'スイーツ',
+  'カップ麺',
+  '惣菜・サラダ',
+  'その他',
+] as const;
+export type ItemCategory = typeof ITEM_CATEGORIES[number];
+
 export interface MyItem {
   id: string;
   user_id: string;
   name: string;
+  category: string;
   use_count: number;
   created_at: string;
 }
 
-
+export interface FavoriteStore {
+  id: string;
+  user_id: string;
+  name: string;
+  created_at: string;
+}
 

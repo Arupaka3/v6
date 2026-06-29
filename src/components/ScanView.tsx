@@ -3,6 +3,7 @@ import { Camera, Image, Edit3, CheckCircle, CreditCard, Link, Check, RefreshCw, 
 import StoreNameInput from './StoreNameInput';
 import { supabase } from '../lib/supabase';
 import type { Receipt, MyItem } from '../types';
+import { ITEM_CATEGORIES } from '../types';
 
 // OLD: OCR.Space implementation (replaced by Tesseract.js)
 
@@ -100,36 +101,43 @@ const ItemsEditor: React.FC<{
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
 
-      {/* マイ定番から選ぶ */}
+      {/* マイ定番から選ぶ（カテゴリ別） */}
       {myItems.length > 0 && (
-        <div>
-          <p style={{ fontSize: '11px', fontWeight: '700', color: 'var(--ios-text-secondary)', margin: '0 0 6px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <p style={{ fontSize: '11px', fontWeight: '700', color: 'var(--ios-text-secondary)', margin: 0 }}>
             マイ定番から選ぶ
           </p>
-          <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '2px' }}>
-            {myItems.map(item => {
-              const selected = items.includes(item.name);
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => { if (!selected) onChange([...items, item.name]); }}
-                  style={{
-                    flexShrink: 0,
-                    padding: '6px 12px', borderRadius: '20px',
-                    border: selected ? 'none' : '1.5px solid var(--ios-border)',
-                    backgroundColor: selected ? 'var(--ios-primary)' : '#FFFFFF',
-                    color: selected ? '#FFFFFF' : 'var(--ios-text-main)',
-                    fontSize: '13px', fontWeight: '600',
-                    cursor: selected ? 'default' : 'pointer',
-                    whiteSpace: 'nowrap', opacity: selected ? 0.7 : 1,
-                  }}
-                >
-                  {item.name}
-                </button>
-              );
-            })}
-          </div>
+          {ITEM_CATEGORIES.filter(cat => myItems.some(i => (i.category || 'その他') === cat)).map(cat => (
+            <div key={cat}>
+              <p style={{ fontSize: '10px', fontWeight: '700', color: 'var(--ios-text-secondary)', margin: '0 0 4px', opacity: 0.7 }}>
+                {cat}
+              </p>
+              <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '2px' }}>
+                {myItems.filter(i => (i.category || 'その他') === cat).map(item => {
+                  const selected = items.includes(item.name);
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => { if (!selected) onChange([...items, item.name]); }}
+                      style={{
+                        flexShrink: 0,
+                        padding: '6px 12px', borderRadius: '20px',
+                        border: selected ? 'none' : '1.5px solid var(--ios-border)',
+                        backgroundColor: selected ? 'var(--ios-primary)' : '#FFFFFF',
+                        color: selected ? '#FFFFFF' : 'var(--ios-text-main)',
+                        fontSize: '13px', fontWeight: '600',
+                        cursor: selected ? 'default' : 'pointer',
+                        whiteSpace: 'nowrap', opacity: selected ? 0.7 : 1,
+                      }}
+                    >
+                      {item.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

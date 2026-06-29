@@ -185,6 +185,7 @@ const DropdownSection: React.FC<{
 const StoreNameInput: React.FC<StoreNameInputProps> = ({ value, onChange, userId }) => {
   const [open, setOpen] = useState(false);
   const [recentStores, setRecentStores] = useState<string[]>([]);
+  const [favoriteStores, setFavoriteStores] = useState<string[]>([]);
   const [nearbyStores, setNearbyStores] = useState<NearbyStore[]>([]);
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
@@ -194,25 +195,37 @@ const StoreNameInput: React.FC<StoreNameInputProps> = ({ value, onChange, userId
   // 位置情報キャッシュ（1分間有効）
   const geoCacheRef = useRef<{ stores: NearbyStore[]; ts: number } | null>(null);
 
-  // ドロップダウンを開くたびに最近の履歴を取得
+  // ドロップダウンを開くたびに最近の履歴とよく行く店舗を取得
   useEffect(() => {
     if (!open || !userId) return;
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await supabase
-          .from('usage_history')
-          .select('store_name')
-          .eq('user_id', userId)
-          .not('store_name', 'is', null)
-          .order('used_at', { ascending: false })
-          .limit(100);
+        const [historyRes, favRes] = await Promise.all([
+          supabase
+            .from('usage_history')
+            .select('store_name')
+            .eq('user_id', userId)
+            .not('store_name', 'is', null)
+            .order('used_at', { ascending: false })
+            .limit(100),
+          supabase
+            .from('favorite_stores')
+            .select('name')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false }),
+        ]);
 
-        if (cancelled || !data) return;
-        const recent = [...new Set(
-          data.map((r: any) => r.store_name as string).filter(Boolean)
-        )].slice(0, 5);
-        setRecentStores(recent);
+        if (cancelled) return;
+        if (historyRes.data) {
+          const recent = [...new Set(
+            historyRes.data.map((r: any) => r.store_name as string).filter(Boolean)
+          )].slice(0, 5);
+          setRecentStores(recent);
+        }
+        if (favRes.data) {
+          setFavoriteStores(favRes.data.map((r: any) => r.name as string));
+        }
       } catch {
         // 取得失敗時は候補なしのまま表示
       }
@@ -333,6 +346,13 @@ const StoreNameInput: React.FC<StoreNameInputProps> = ({ value, onChange, userId
           {nearbyStores.length > 0 && (
             <NearbyDropdownSection
               stores={nearbyStores}
+              onSelect={handleSelect}
+            />
+          )}
+          {favoriteStores.length > 0 && (
+            <DropdownSection
+              label="★ よく行く店舗"
+              stores={favoriteStores}
               onSelect={handleSelect}
             />
           )}

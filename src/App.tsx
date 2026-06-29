@@ -1,6 +1,7 @@
 // TODO: remove before production release - dev only
 import { useState, useEffect } from 'react';
-import type { ActiveTab, Receipt, SpendingGoal, SavingsGoal, Streak, UserBadge, MyItem } from './types';
+import type { ActiveTab, Receipt, SpendingGoal, SavingsGoal, Streak, UserBadge, MyItem, FavoriteStore } from './types';
+import { ITEM_CATEGORIES } from './types';
 import TabBar from './components/TabBar';
 import HomeView from './components/HomeView';
 import ScanView from './components/ScanView';
@@ -73,7 +74,13 @@ function App() {
   // マイ定番商品のステート（設定モーダル用）
   const [myItems, setMyItems] = useState<MyItem[]>([]);
   const [settingsNewItem, setSettingsNewItem] = useState('');
+  const [settingsNewItemCategory, setSettingsNewItemCategory] = useState('その他');
   const [showAddItemInput, setShowAddItemInput] = useState(false);
+
+  // よく行く店舗のステート
+  const [favoriteStores, setFavoriteStores] = useState<FavoriteStore[]>([]);
+  const [settingsNewStore, setSettingsNewStore] = useState('');
+  const [showAddStoreInput, setShowAddStoreInput] = useState(false);
 
 
 
@@ -567,18 +574,55 @@ function App() {
   const handleAddMyItemFromSettings = async () => {
     const name = settingsNewItem.trim();
     if (!name || !session) return;
-    await supabase.rpc('upsert_my_item', {
+    const { error } = await supabase.rpc('upsert_my_item', {
       p_user_id: session.user.id,
       p_name: name,
+      p_category: settingsNewItemCategory,
     });
+    if (error) {
+      console.error('Failed to add item:', error);
+      return;
+    }
     setSettingsNewItem('');
+    setSettingsNewItemCategory('その他');
     setShowAddItemInput(false);
     await fetchMyItems();
   };
 
-  // 設定モーダルを開くときにmy_itemsを取得
+  // よく行く店舗の管理
+  const fetchFavoriteStores = async () => {
+    if (!session) return;
+    const { data } = await supabase
+      .from('favorite_stores')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .order('created_at', { ascending: false });
+    if (data) setFavoriteStores(data as FavoriteStore[]);
+  };
+
+  const handleAddFavoriteStore = async () => {
+    const name = settingsNewStore.trim();
+    if (!name || !session) return;
+    const { error } = await supabase
+      .from('favorite_stores')
+      .upsert({ user_id: session.user.id, name }, { onConflict: 'user_id,name', ignoreDuplicates: true });
+    if (error) { console.error('Failed to add store:', error); return; }
+    setSettingsNewStore('');
+    setShowAddStoreInput(false);
+    await fetchFavoriteStores();
+  };
+
+  const handleDeleteFavoriteStore = async (id: string) => {
+    await supabase.from('favorite_stores').delete().eq('id', id);
+    setFavoriteStores(prev => prev.filter(s => s.id !== id));
+  };
+
+  // 設定モーダルを開くときにmy_itemsとfavorite_storesを取得
   useEffect(() => {
-    if (showSettingsModal && session) fetchMyItems();
+    if (showSettingsModal && session) {
+      fetchMyItems();
+      fetchFavoriteStores();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showSettingsModal]);
 
@@ -974,13 +1018,73 @@ function App() {
               </span>
             </div>
 
+            {/* よく行く店舗 */}
+            <div className="ios-card" style={{ margin: 0, padding: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <span style={{ fontSize: '14px', fontWeight: '800' }}>よく行く店舗</span>
+                <button
+                  type="button"
+                  onClick={() => { setShowAddStoreInput(v => !v); setSettingsNewStore(''); }}
+                  style={{
+                    border: 'none', background: 'none', cursor: 'pointer',
+                    color: 'var(--ios-primary)', fontSize: '12px', fontWeight: '700',
+                    display: 'flex', alignItems: 'center', gap: '3px',
+                  }}
+                >
+                  <Plus size={13} strokeWidth={3} />
+                  店舗を追加
+                </button>
+              </div>
+              {showAddStoreInput && (
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                  <input
+                    type="text"
+                    className="ios-input"
+                    value={settingsNewStore}
+                    onChange={e => setSettingsNewStore(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddFavoriteStore(); } }}
+                    placeholder="例: セブンイレブン 〇〇店"
+                    autoFocus
+                    style={{ flex: 1, fontSize: '14px' }}
+                  />
+                  <button type="button" className="ios-btn" onClick={handleAddFavoriteStore}
+                    style={{ width: 'auto', padding: '0 14px', flexShrink: 0 }}>
+                    追加
+                  </button>
+                </div>
+              )}
+              {favoriteStores.length === 0 ? (
+                <p style={{ fontSize: '12px', color: 'var(--ios-text-secondary)', textAlign: 'center', margin: '8px 0' }}>
+                  登録済みの店舗はありません
+                </p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {favoriteStores.map(store => (
+                    <div key={store.id} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '8px 10px', borderRadius: '10px', backgroundColor: '#F9F9FB',
+                    }}>
+                      <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--ios-text-main)' }}>
+                        {store.name}
+                      </span>
+                      <button type="button" onClick={() => handleDeleteFavoriteStore(store.id)}
+                        style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--ios-text-secondary)', display: 'flex', padding: 0 }}
+                        aria-label={`${store.name}を削除`}>
+                        <X size={14} strokeWidth={2.5} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* マイ定番商品 */}
             <div className="ios-card" style={{ margin: 0, padding: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                 <span style={{ fontSize: '14px', fontWeight: '800' }}>マイ定番商品</span>
                 <button
                   type="button"
-                  onClick={() => { setShowAddItemInput(v => !v); setSettingsNewItem(''); }}
+                  onClick={() => { setShowAddItemInput(v => !v); setSettingsNewItem(''); setSettingsNewItemCategory('その他'); }}
                   style={{
                     border: 'none', background: 'none', cursor: 'pointer',
                     color: 'var(--ios-primary)', fontSize: '12px', fontWeight: '700',
@@ -994,58 +1098,86 @@ function App() {
 
               {/* 追加入力 */}
               {showAddItemInput && (
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-                  <input
-                    type="text"
-                    className="ios-input"
-                    value={settingsNewItem}
-                    onChange={e => setSettingsNewItem(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddMyItemFromSettings(); } }}
-                    placeholder="商品名を入力"
-                    autoFocus
-                    style={{ flex: 1, fontSize: '14px' }}
-                  />
-                  <button
-                    type="button"
-                    className="ios-btn"
-                    onClick={handleAddMyItemFromSettings}
-                    style={{ width: 'auto', padding: '0 14px', flexShrink: 0 }}
-                  >
-                    追加
-                  </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="text"
+                      className="ios-input"
+                      value={settingsNewItem}
+                      onChange={e => setSettingsNewItem(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddMyItemFromSettings(); } }}
+                      placeholder="商品名を入力"
+                      autoFocus
+                      style={{ flex: 1, fontSize: '14px' }}
+                    />
+                    <button
+                      type="button"
+                      className="ios-btn"
+                      onClick={handleAddMyItemFromSettings}
+                      style={{ width: 'auto', padding: '0 14px', flexShrink: 0 }}
+                    >
+                      追加
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {ITEM_CATEGORIES.map(cat => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setSettingsNewItemCategory(cat)}
+                        style={{
+                          padding: '4px 10px', borderRadius: '20px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
+                          border: `1.5px solid ${settingsNewItemCategory === cat ? 'var(--ios-primary)' : 'var(--ios-border)'}`,
+                          backgroundColor: settingsNewItemCategory === cat ? 'var(--ios-primary-light)' : '#fff',
+                          color: settingsNewItemCategory === cat ? 'var(--ios-primary)' : 'var(--ios-text-secondary)',
+                        }}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
-              {/* 商品一覧 */}
+              {/* 商品一覧（カテゴリ別） */}
               {myItems.length === 0 ? (
                 <p style={{ fontSize: '12px', color: 'var(--ios-text-secondary)', textAlign: 'center', margin: '8px 0' }}>
                   登録済みの商品はありません
                 </p>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  {myItems.map(item => (
-                    <div key={item.id} style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '8px 10px', borderRadius: '10px', backgroundColor: '#F9F9FB',
-                    }}>
-                      <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--ios-text-main)' }}>
-                        {item.name}
-                      </span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '11px', color: 'var(--ios-text-secondary)' }}>
-                          {item.use_count}回
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteMyItem(item.id)}
-                          style={{
-                            border: 'none', background: 'none', cursor: 'pointer',
-                            color: 'var(--ios-text-secondary)', display: 'flex', padding: 0,
-                          }}
-                          aria-label={`${item.name}を削除`}
-                        >
-                          <X size={14} strokeWidth={2.5} />
-                        </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {ITEM_CATEGORIES.filter(cat => myItems.some(i => (i.category || 'その他') === cat)).map(cat => (
+                    <div key={cat}>
+                      <p style={{ fontSize: '11px', fontWeight: '700', color: 'var(--ios-text-secondary)', margin: '0 0 4px' }}>
+                        {cat}
+                      </p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        {myItems.filter(i => (i.category || 'その他') === cat).map(item => (
+                          <div key={item.id} style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '8px 10px', borderRadius: '10px', backgroundColor: '#F9F9FB',
+                          }}>
+                            <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--ios-text-main)' }}>
+                              {item.name}
+                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <span style={{ fontSize: '11px', color: 'var(--ios-text-secondary)' }}>
+                                {item.use_count}回
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteMyItem(item.id)}
+                                style={{
+                                  border: 'none', background: 'none', cursor: 'pointer',
+                                  color: 'var(--ios-text-secondary)', display: 'flex', padding: 0,
+                                }}
+                                aria-label={`${item.name}を削除`}
+                              >
+                                <X size={14} strokeWidth={2.5} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   ))}
