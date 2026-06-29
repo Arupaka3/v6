@@ -11,6 +11,7 @@ export const scanReceipt = async (
   confidence: 'high' | 'medium' | 'low';
 }> => {
   const worker = await createWorker('jpn+eng', 1, {
+    workerPath: '/tesseract-worker.min.js',
     logger: (m) => {
       if (m.status === 'recognizing text' && onProgress) {
         onProgress(Math.round(m.progress * 100));
