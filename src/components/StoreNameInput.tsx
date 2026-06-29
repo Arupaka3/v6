@@ -126,9 +126,10 @@ const NearbyDropdownSection: React.FC<{
         <button
           key={store.name}
           type="button"
-          onPointerDown={e => { e.preventDefault(); setPressed(store.name); onSelect(store.name); }}
+          onPointerDown={() => setPressed(store.name)}
           onPointerUp={() => setPressed(null)}
           onPointerLeave={() => setPressed(null)}
+          onClick={() => onSelect(store.name)}
           style={itemButtonBase(pressed === store.name)}
         >
           <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--ios-text-main)' }}>
@@ -157,9 +158,10 @@ const DropdownSection: React.FC<{
         <button
           key={store}
           type="button"
-          onPointerDown={e => { e.preventDefault(); setPressed(store); onSelect(store); }}
+          onPointerDown={() => setPressed(store)}
           onPointerUp={() => setPressed(null)}
           onPointerLeave={() => setPressed(null)}
+          onClick={() => onSelect(store)}
           style={itemButtonBase(pressed === store)}
         >
           <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--ios-text-main)' }}>
@@ -209,16 +211,16 @@ const StoreNameInput: React.FC<StoreNameInputProps> = ({ value, onChange, userId
     return () => { cancelled = true; };
   }, [open, userId]);
 
-  // ラッパー外クリックで閉じる
+  // ラッパー外タッチ・クリックで閉じる（pointerdownはmousedown/touchstartを統合）
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
+    const handler = (e: PointerEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
         setOpen(false);
         setGeoError(null);
       }
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener('pointerdown', handler);
+    return () => document.removeEventListener('pointerdown', handler);
   }, []);
 
   const handleGeoSearch = async () => {
@@ -317,6 +319,7 @@ const StoreNameInput: React.FC<StoreNameInputProps> = ({ value, onChange, userId
           maxHeight: '260px',
           overflowY: 'auto',
           overflowX: 'hidden',
+          WebkitOverflowScrolling: 'touch',
         }}>
           {nearbyStores.length > 0 && (
             <NearbyDropdownSection
