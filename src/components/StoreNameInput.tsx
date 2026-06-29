@@ -39,8 +39,24 @@ const fetchWithFallback = async (query: string) => {
   throw new Error('全エンドポイントで失敗');
 };
 
-// 近くのコンビニをOverpass APIで取得
-const getNearbyConbini = async (): Promise<string[]> => {
+interface NearbyStore {
+  name: string;
+  distance: number;
+}
+
+const calcDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+};
+
+// 近くのコンビニをOverpass APIで取得（具体的な店舗名＋距離付き）
+const getNearbyConbini = async (): Promise<NearbyStore[]> => {
   const position = await new Promise<GeolocationPosition>((resolve, reject) =>
     navigator.geolocation.getCurrentPosition(resolve, reject, {
       timeout: 5000,
@@ -62,65 +78,93 @@ const getNearbyConbini = async (): Promise<string[]> => {
 
   const data = await fetchWithFallback(query);
 
-  const stores: string[] = (data.elements as any[])
-    .map(el => el.tags?.['name:ja'] || el.tags?.name)
-    .filter(Boolean)
-    .filter((name: string) =>
-      /セブン|ファミリー|ローソン|ミニストップ|デイリー|コンビニ/i.test(name)
-    )
-    .map((name: string) => {
-      if (/セブン/.test(name)) return 'セブンイレブン';
-      if (/ファミリー/.test(name)) return 'ファミリーマート';
-      if (/ローソン/.test(name)) return 'ローソン';
-      if (/ミニストップ/.test(name)) return 'ミニストップ';
-      if (/デイリー/.test(name)) return 'デイリーヤマザキ';
-      return name;
-    });
+  const seen = new Set<string>();
+  const stores: NearbyStore[] = [];
 
-  return [...new Set(stores)];
+  for (const el of data.elements as any[]) {
+    const rawName: string | undefined = el.tags?.['name:ja'] || el.tags?.name;
+    if (!rawName) continue;
+    if (!/セブン|ファミリー|ローソン|ミニストップ|デイリー|コンビニ/i.test(rawName)) continue;
+    const name = rawName.length > 22 ? rawName.slice(0, 22) + '…' : rawName;
+    if (seen.has(name)) continue;
+    seen.add(name);
+    stores.push({ name, distance: calcDistance(lat, lon, el.lat, el.lon) });
+  }
+
+  return stores.sort((a, b) => a.distance - b.distance);
 };
 
-// ドロップダウンの1セクション（タップ感度改善版）
+const sectionHeaderStyle: React.CSSProperties = {
+  padding: '7px 14px 4px',
+  fontSize: '11px', fontWeight: '700',
+  color: 'var(--ios-text-secondary)',
+  backgroundColor: '#F9F9FB',
+  borderBottom: '0.5px solid var(--ios-border)',
+};
+
+const itemButtonBase = (pressed: boolean): React.CSSProperties => ({
+  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+  width: '100%', textAlign: 'left',
+  padding: '14px 20px', minHeight: '48px',
+  border: 'none', borderBottom: '1px solid #f0f0f0',
+  backgroundColor: pressed ? 'var(--ios-primary-light)' : 'transparent',
+  cursor: 'pointer', userSelect: 'none',
+  WebkitTapHighlightColor: 'rgba(0,0,0,0.1)',
+  transition: 'background-color 0.1s ease',
+});
+
+// 距離付き近くの店舗セクション
+const NearbyDropdownSection: React.FC<{
+  stores: NearbyStore[];
+  onSelect: (s: string) => void;
+}> = ({ stores, onSelect }) => {
+  const [pressed, setPressed] = useState<string | null>(null);
+  return (
+    <div>
+      <div style={sectionHeaderStyle}>📍 近くのコンビニ（300m以内）</div>
+      {stores.map(store => (
+        <button
+          key={store.name}
+          type="button"
+          onPointerDown={e => { e.preventDefault(); setPressed(store.name); onSelect(store.name); }}
+          onPointerUp={() => setPressed(null)}
+          onPointerLeave={() => setPressed(null)}
+          style={itemButtonBase(pressed === store.name)}
+        >
+          <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--ios-text-main)' }}>
+            {store.name}
+          </span>
+          <span style={{ fontSize: '11px', color: 'var(--ios-text-secondary)', fontWeight: '500', flexShrink: 0, marginLeft: '8px' }}>
+            約{store.distance}m
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+};
+
+// 通常の候補セクション（最近・定番）
 const DropdownSection: React.FC<{
   label: string;
   stores: string[];
   onSelect: (s: string) => void;
 }> = ({ label, stores, onSelect }) => {
-  const [pressedStore, setPressedStore] = useState<string | null>(null);
-
+  const [pressed, setPressed] = useState<string | null>(null);
   return (
     <div>
-      <div style={{
-        padding: '7px 14px 4px',
-        fontSize: '11px', fontWeight: '700',
-        color: 'var(--ios-text-secondary)',
-        backgroundColor: '#F9F9FB',
-        borderBottom: '0.5px solid var(--ios-border)',
-      }}>
-        {label}
-      </div>
+      <div style={sectionHeaderStyle}>{label}</div>
       {stores.map(store => (
         <button
           key={store}
           type="button"
-          onPointerDown={e => { e.preventDefault(); setPressedStore(store); onSelect(store); }}
-          onPointerUp={() => setPressedStore(null)}
-          onPointerLeave={() => setPressedStore(null)}
-          style={{
-            display: 'block', width: '100%', textAlign: 'left',
-            padding: '16px 20px',
-            minHeight: '52px',
-            border: 'none',
-            borderBottom: '1px solid #f0f0f0',
-            backgroundColor: pressedStore === store ? 'var(--ios-primary-light)' : 'transparent',
-            fontSize: '14px', fontWeight: '600',
-            color: 'var(--ios-text-main)', cursor: 'pointer',
-            userSelect: 'none',
-            WebkitTapHighlightColor: 'rgba(0,0,0,0.1)',
-            transition: 'background-color 0.1s ease',
-          }}
+          onPointerDown={e => { e.preventDefault(); setPressed(store); onSelect(store); }}
+          onPointerUp={() => setPressed(null)}
+          onPointerLeave={() => setPressed(null)}
+          style={itemButtonBase(pressed === store)}
         >
-          {store}
+          <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--ios-text-main)' }}>
+            {store}
+          </span>
         </button>
       ))}
     </div>
@@ -130,14 +174,14 @@ const DropdownSection: React.FC<{
 const StoreNameInput: React.FC<StoreNameInputProps> = ({ value, onChange, userId }) => {
   const [open, setOpen] = useState(false);
   const [recentStores, setRecentStores] = useState<string[]>([]);
-  const [nearbyStores, setNearbyStores] = useState<string[]>([]);
+  const [nearbyStores, setNearbyStores] = useState<NearbyStore[]>([]);
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [showOsmCredit, setShowOsmCredit] = useState(false);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   // 位置情報キャッシュ（1分間有効）
-  const geoCacheRef = useRef<{ stores: string[]; ts: number } | null>(null);
+  const geoCacheRef = useRef<{ stores: NearbyStore[]; ts: number } | null>(null);
 
   // ドロップダウンを開くたびに最近の履歴を取得
   useEffect(() => {
@@ -275,8 +319,7 @@ const StoreNameInput: React.FC<StoreNameInputProps> = ({ value, onChange, userId
           overflowX: 'hidden',
         }}>
           {nearbyStores.length > 0 && (
-            <DropdownSection
-              label="📍 近くのコンビニ（300m以内）"
+            <NearbyDropdownSection
               stores={nearbyStores}
               onSelect={handleSelect}
             />
