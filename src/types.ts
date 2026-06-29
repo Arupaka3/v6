@@ -36,5 +36,13 @@ export interface UserBadge {
   unlocked_at: string;
 }
 
+export interface MyItem {
+  id: string;
+  user_id: string;
+  name: string;
+  use_count: number;
+  created_at: string;
+}
+
 
 

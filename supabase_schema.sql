@@ -149,6 +149,43 @@ USING (auth.uid() = user_id)
 WITH CHECK (auth.uid() = user_id);
 
 
+-- ============================================================
+-- my_items table (マイ定番商品)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.my_items (
+  id          uuid    DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id     uuid    REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name        varchar(50) NOT NULL,
+  use_count   integer DEFAULT 1 NOT NULL,
+  created_at  timestamp with time zone DEFAULT now(),
+  CONSTRAINT  my_items_user_name_unique UNIQUE (user_id, name)
+);
+
+ALTER TABLE public.my_items ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can manage own items" ON public.my_items;
+CREATE POLICY "Users can manage own items"
+  ON public.my_items FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- upsert_my_item: 既存なら use_count +1、なければ INSERT
+CREATE OR REPLACE FUNCTION public.upsert_my_item(
+  p_user_id uuid,
+  p_name    varchar
+) RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  INSERT INTO public.my_items (user_id, name, use_count)
+  VALUES (p_user_id, p_name, 1)
+  ON CONFLICT (user_id, name)
+  DO UPDATE SET use_count = public.my_items.use_count + 1;
+END;
+$$;
+
+
 -- Create badges table (NEW)
 CREATE TABLE IF NOT EXISTS public.badges (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

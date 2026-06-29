@@ -16,6 +16,29 @@ const PRESET_STORES = [
   'デイリーヤマザキ',
 ];
 
+// CORS対応済みのエンドポイントを優先してフォールバック
+const OVERPASS_ENDPOINTS = [
+  'https://overpass.private.coffee/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
+];
+
+const fetchWithFallback = async (query: string) => {
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        body: 'data=' + encodeURIComponent(query),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (res.ok) return await res.json();
+    } catch {
+      continue;
+    }
+  }
+  throw new Error('全エンドポイントで失敗');
+};
+
 // 近くのコンビニをOverpass APIで取得
 const getNearbyConbini = async (): Promise<string[]> => {
   const position = await new Promise<GeolocationPosition>((resolve, reject) =>
@@ -37,12 +60,7 @@ const getNearbyConbini = async (): Promise<string[]> => {
     out body;
   `;
 
-  const res = await fetch('https://overpass-api.de/api/interpreter', {
-    method: 'POST',
-    body: 'data=' + encodeURIComponent(query),
-  });
-  if (!res.ok) throw new Error('Overpass API error');
-  const data = await res.json();
+  const data = await fetchWithFallback(query);
 
   const stores: string[] = (data.elements as any[])
     .map(el => el.tags?.['name:ja'] || el.tags?.name)

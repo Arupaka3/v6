@@ -1,7 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Camera, Edit3, CheckCircle, CreditCard, Link, Check, RefreshCw, Plus, X } from 'lucide-react';
 import StoreNameInput from './StoreNameInput';
-import type { Receipt } from '../types';
+import { supabase } from '../lib/supabase';
+import type { Receipt, MyItem } from '../types';
 
 // OLD: OCR.Space implementation (replaced by Tesseract.js)
 
@@ -66,24 +67,83 @@ const ItemTags: React.FC<{
   </div>
 );
 
-// 商品追加エディタ
+// 商品追加エディタ（マイ定番連携）
 const ItemsEditor: React.FC<{
   items: string[];
   onChange: (items: string[]) => void;
-}> = ({ items, onChange }) => {
+  userId: string | null;
+}> = ({ items, onChange, userId }) => {
+  const [myItems, setMyItems] = useState<MyItem[]>([]);
   const [inputVisible, setInputVisible] = useState(false);
   const [text, setText] = useState('');
 
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    supabase
+      .from('my_items')
+      .select('*')
+      .eq('user_id', userId)
+      .order('use_count', { ascending: false })
+      .limit(20)
+      .then(({ data }) => { if (!cancelled && data) setMyItems(data as MyItem[]); });
+    return () => { cancelled = true; };
+  }, [userId]);
+
   const handleAdd = () => {
     const trimmed = text.trim();
-    if (trimmed) onChange([...items, trimmed]);
+    if (trimmed && !items.includes(trimmed)) onChange([...items, trimmed]);
     setText('');
     setInputVisible(false);
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      <ItemTags items={items} onRemove={idx => onChange(items.filter((_, i) => i !== idx))} />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+
+      {/* マイ定番から選ぶ */}
+      {myItems.length > 0 && (
+        <div>
+          <p style={{ fontSize: '11px', fontWeight: '700', color: 'var(--ios-text-secondary)', margin: '0 0 6px' }}>
+            マイ定番から選ぶ
+          </p>
+          <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '2px' }}>
+            {myItems.map(item => {
+              const selected = items.includes(item.name);
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => { if (!selected) onChange([...items, item.name]); }}
+                  style={{
+                    flexShrink: 0,
+                    padding: '6px 12px', borderRadius: '20px',
+                    border: selected ? 'none' : '1.5px solid var(--ios-border)',
+                    backgroundColor: selected ? 'var(--ios-primary)' : '#FFFFFF',
+                    color: selected ? '#FFFFFF' : 'var(--ios-text-main)',
+                    fontSize: '13px', fontWeight: '600',
+                    cursor: selected ? 'default' : 'pointer',
+                    whiteSpace: 'nowrap', opacity: selected ? 0.7 : 1,
+                  }}
+                >
+                  {item.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 今回の商品 */}
+      <div>
+        {items.length > 0 && (
+          <p style={{ fontSize: '11px', fontWeight: '700', color: 'var(--ios-text-secondary)', margin: '0 0 6px' }}>
+            今回の商品
+          </p>
+        )}
+        <ItemTags items={items} onRemove={idx => onChange(items.filter((_, i) => i !== idx))} />
+      </div>
+
+      {/* 手入力で追加 */}
       {inputVisible ? (
         <div style={{ display: 'flex', gap: '8px' }}>
           <input
@@ -424,7 +484,7 @@ const ScanView: React.FC<ScanViewProps> = ({
             <p style={{ fontSize: '11px', color: 'var(--ios-text-secondary)', marginBottom: '8px', lineHeight: 1.4 }}>
               読み取り結果は参考です。必要に応じて修正してください。
             </p>
-            <ItemsEditor items={ocrItems} onChange={setOcrItems} />
+            <ItemsEditor items={ocrItems} onChange={setOcrItems} userId={userId} />
           </div>
 
           {/* 5. ボタン */}
@@ -477,7 +537,7 @@ const ScanView: React.FC<ScanViewProps> = ({
           {/* 4. 商品名 */}
           <div className="ios-input-group" style={{ marginBottom: '24px' }}>
             <label className="ios-input-label">商品名（任意）</label>
-            <ItemsEditor items={manualItems} onChange={setManualItems} />
+            <ItemsEditor items={manualItems} onChange={setManualItems} userId={userId} />
           </div>
 
           {/* 5. ボタン */}
