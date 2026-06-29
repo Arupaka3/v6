@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Edit3, CheckCircle, CreditCard, Link, Check, RefreshCw, Plus, X } from 'lucide-react';
+import { Camera, Image, Edit3, CheckCircle, CreditCard, Link, Check, RefreshCw, Plus, X } from 'lucide-react';
 import StoreNameInput from './StoreNameInput';
 import { supabase } from '../lib/supabase';
 import type { Receipt, MyItem } from '../types';
@@ -206,7 +206,8 @@ const ScanView: React.FC<ScanViewProps> = ({
   const [manualDate, setManualDate] = useState('');
   const [manualItems, setManualItems] = useState<string[]>([]);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const todayStr = () => new Date().toISOString().split('T')[0];
 
   // iOSでカメラ起動後にviewportが縮んだままになる問題を修正
@@ -305,7 +306,8 @@ const ScanView: React.FC<ScanViewProps> = ({
   const resetToIdle = () => {
     setScanState('idle');
     setProgress(0);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+    if (galleryInputRef.current) galleryInputRef.current.value = '';
   };
 
   const handleLinkPaymentClick = (providerId: string) => {
@@ -324,41 +326,52 @@ const ScanView: React.FC<ScanViewProps> = ({
       {scanState === 'idle' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-          {/* カメラ撮影エリア */}
-          <div
-            style={{
-              height: '220px', border: '2.5px dashed var(--ios-gray-dark)',
-              borderRadius: '24px', display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center',
-              backgroundColor: '#FFFFFF', cursor: 'pointer',
-              padding: '20px', boxSizing: 'border-box', textAlign: 'center',
-            }}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <div style={{
-              width: '56px', height: '56px', borderRadius: '50%',
-              backgroundColor: 'var(--ios-primary-light)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'var(--ios-primary)', marginBottom: '12px',
-            }}>
-              <Camera size={28} />
-            </div>
-            <span style={{ fontSize: '15px', fontWeight: '800', marginBottom: '6px' }}>
-              レシートを撮影
-            </span>
-            <span style={{ fontSize: '11px', color: 'var(--ios-text-secondary)', lineHeight: '1.4' }}>
-              カメラで撮影すると金額・店舗・日付・商品名を自動で読み取ります
-            </span>
-            <input
-              type="file" ref={fileInputRef} onChange={handleFileChange}
-              accept="image/*" capture="environment" style={{ display: 'none' }}
-            />
-          </div>
+          {/* hidden inputs */}
+          <input
+            ref={cameraInputRef} type="file" accept="image/*" capture="environment"
+            style={{ display: 'none' }} onChange={handleFileChange}
+          />
+          <input
+            ref={galleryInputRef} type="file" accept="image/*"
+            style={{ display: 'none' }} onChange={handleFileChange}
+          />
 
-          {/* 手入力ボタン */}
+          {/* カメラで撮影（メインアクション） */}
           <button
             type="button"
-            className="ios-btn ios-btn-secondary"
+            className="ios-btn"
+            onClick={() => cameraInputRef.current?.click()}
+            style={{
+              padding: '18px 20px', fontSize: '16px', fontWeight: '800',
+              borderRadius: '18px', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', gap: '10px',
+            }}
+          >
+            <Camera size={22} />
+            カメラで撮影
+          </button>
+
+          {/* 保存済み画像から選ぶ（サブアクション） */}
+          <button
+            type="button"
+            onClick={() => galleryInputRef.current?.click()}
+            style={{
+              padding: '18px 20px', fontSize: '16px', fontWeight: '800',
+              borderRadius: '18px', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', gap: '10px',
+              border: '2px solid var(--ios-primary)',
+              backgroundColor: 'transparent',
+              color: 'var(--ios-primary)',
+              cursor: 'pointer',
+            }}
+          >
+            <Image size={22} />
+            保存済み画像から選ぶ
+          </button>
+
+          {/* 手入力（テキストリンク風） */}
+          <button
+            type="button"
             onClick={() => {
               setManualStoreName('セブンイレブン');
               setManualAmount('');
@@ -366,10 +379,15 @@ const ScanView: React.FC<ScanViewProps> = ({
               setManualItems([]);
               setScanState('manual');
             }}
-            style={{ padding: '14px 20px', fontSize: '15px', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+            style={{
+              border: 'none', background: 'none', cursor: 'pointer',
+              color: 'var(--ios-text-secondary)', fontSize: '14px', fontWeight: '600',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: '6px', padding: '6px 0',
+            }}
           >
-            <Edit3 size={18} />
-            手入力で登録
+            <Edit3 size={15} />
+            手入力で登録する
           </button>
 
           {/* 電子決済連携 */}
