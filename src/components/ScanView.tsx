@@ -209,6 +209,27 @@ const ScanView: React.FC<ScanViewProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const todayStr = () => new Date().toISOString().split('T')[0];
 
+  // iOSでカメラ起動後にviewportが縮んだままになる問題を修正
+  useEffect(() => {
+    const resetViewport = () => {
+      const vp = document.querySelector('meta[name="viewport"]');
+      if (vp) {
+        vp.setAttribute('content',
+          'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover'
+        );
+      }
+      if (window.visualViewport) {
+        document.documentElement.style.height = '100%';
+      }
+    };
+    window.addEventListener('focus', resetViewport);
+    window.visualViewport?.addEventListener('resize', resetViewport);
+    return () => {
+      window.removeEventListener('focus', resetViewport);
+      window.visualViewport?.removeEventListener('resize', resetViewport);
+    };
+  }, []);
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.[0]) return;
     const file = e.target.files[0];
