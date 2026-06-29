@@ -7,6 +7,7 @@ export const scanReceipt = async (
   store_name: string;
   amount: number | null;
   date: string;
+  items: string[];
   raw_text: string;
   confidence: 'high' | 'medium' | 'low';
 }> => {
@@ -73,11 +74,35 @@ export const scanReceipt = async (
     }
   }
 
+  // 商品名の抽出
+  // レシートの商品行パターン：「商品名　金額」または「商品名　数量×単価　金額」の形式が多い
+  const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const extractedItems: string[] = [];
+
+  for (const line of lines) {
+    // 金額っぽい数字で終わる行を商品行と判定
+    const isMoneyLine = /\d{2,4}$/.test(line.replace(/[,，]/g, ''));
+    const isExcluded = /合計|小計|税|おつり|お釣|お預|日付|領収|ありがとう|またのご|レシート|\d{4}[年\/]\d{1,2}[月\/]\d{1,2}/.test(line);
+    const isTooShort = line.replace(/[\s\d¥￥,，]/g, '').length < 2;
+
+    if (isMoneyLine && !isExcluded && !isTooShort) {
+      const itemName = line
+        .replace(/[\s　]+\d[\d,，]*\s*$/, '')  // 末尾の金額を除去
+        .replace(/^\d+\s*/, '')               // 先頭の番号を除去
+        .trim();
+      if (itemName.length >= 2 && itemName.length <= 30) {
+        extractedItems.push(itemName);
+      }
+    }
+  }
+
+  const items = extractedItems.slice(0, 8);
+
   const confidence = amount !== null
     ? (data.confidence > 70 ? 'high' : 'medium')
     : 'low';
 
-  return { store_name, amount, date, raw_text: rawText, confidence };
+  return { store_name, amount, date, items, raw_text: rawText, confidence };
 };
 
 const resizeImage = (file: File, maxWidth: number): Promise<File> => {

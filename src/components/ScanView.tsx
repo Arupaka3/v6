@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Camera, Edit3, CheckCircle, CreditCard, Link, Check, RefreshCw } from 'lucide-react';
+import { Camera, Edit3, CheckCircle, CreditCard, Link, Check, RefreshCw, Plus, X } from 'lucide-react';
 import type { Receipt } from '../types';
 
 // OLD: OCR.Space implementation (replaced by Tesseract.js)
@@ -15,11 +15,122 @@ type ScanState = 'idle' | 'scanning' | 'confirm' | 'manual' | 'done';
 const STORE_OPTIONS = ['セブンイレブン', 'ファミリーマート', 'ローソン', 'その他'] as const;
 
 const providers = [
-  { id: 'PayPay', name: 'PayPay', color: '#FF003F', bg: '#FFF0F3' },
-  { id: 'Suica', name: 'Suica', color: '#00A960', bg: '#F0FFF4' },
-  { id: 'RakutenPay', name: '楽天ペイ', color: '#BF0000', bg: '#FFF0F0' },
-  { id: 'dBarai', name: 'd払い', color: '#E60012', bg: '#FFF0F0' }
+  { id: 'PayPay',      name: 'PayPay',  color: '#FF003F', bg: '#FFF0F3' },
+  { id: 'Suica',       name: 'Suica',   color: '#00A960', bg: '#F0FFF4' },
+  { id: 'RakutenPay',  name: '楽天ペイ', color: '#BF0000', bg: '#FFF0F0' },
+  { id: 'dBarai',      name: 'd払い',   color: '#E60012', bg: '#FFF0F0' }
 ];
+
+// 日付 input に iOS Safari のはみ出し対策スタイルを適用
+const dateInputStyle: React.CSSProperties = {
+  width: '100%',
+  boxSizing: 'border-box',
+  maxWidth: '100%',
+  fontSize: '14px',
+  appearance: 'none',
+  WebkitAppearance: 'none',
+  padding: '12px 16px',
+  overflow: 'hidden',
+};
+
+// 商品タグ表示コンポーネント
+const ItemTags: React.FC<{
+  items: string[];
+  onRemove: (idx: number) => void;
+}> = ({ items, onRemove }) => (
+  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+    {items.map((item, idx) => (
+      <span
+        key={idx}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: '4px',
+          backgroundColor: 'var(--ios-primary-light)', color: 'var(--ios-primary)',
+          padding: '5px 10px', borderRadius: '20px',
+          fontSize: '13px', fontWeight: '600',
+        }}
+      >
+        {item}
+        <button
+          type="button"
+          onClick={() => onRemove(idx)}
+          style={{
+            border: 'none', background: 'none', padding: '0 0 0 2px',
+            cursor: 'pointer', color: 'var(--ios-primary)',
+            display: 'flex', alignItems: 'center', lineHeight: 1,
+          }}
+          aria-label={`${item}を削除`}
+        >
+          <X size={12} strokeWidth={3} />
+        </button>
+      </span>
+    ))}
+  </div>
+);
+
+// 商品追加 UI（タグ一覧 + 追加ボタン & インライン入力）
+const ItemsEditor: React.FC<{
+  items: string[];
+  onChange: (items: string[]) => void;
+}> = ({ items, onChange }) => {
+  const [inputVisible, setInputVisible] = useState(false);
+  const [text, setText] = useState('');
+
+  const handleAdd = () => {
+    const trimmed = text.trim();
+    if (trimmed) {
+      onChange([...items, trimmed]);
+      setText('');
+    }
+    setInputVisible(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') { e.preventDefault(); handleAdd(); }
+    if (e.key === 'Escape') { setInputVisible(false); setText(''); }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      <ItemTags items={items} onRemove={(idx) => onChange(items.filter((_, i) => i !== idx))} />
+
+      {inputVisible ? (
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <input
+            type="text"
+            className="ios-input"
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="商品名を入力"
+            autoFocus
+            style={{ flex: 1 }}
+          />
+          <button type="button" className="ios-btn" onClick={handleAdd}
+            style={{ width: 'auto', padding: '0 16px', flexShrink: 0 }}>
+            追加
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setInputVisible(true)}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: '4px',
+            border: '1.5px dashed var(--ios-primary)', borderRadius: '20px',
+            padding: '5px 12px', fontSize: '13px', fontWeight: '600',
+            color: 'var(--ios-primary)', backgroundColor: 'transparent',
+            cursor: 'pointer', alignSelf: 'flex-start',
+          }}
+        >
+          <Plus size={13} strokeWidth={3} />
+          商品を追加
+        </button>
+      )}
+    </div>
+  );
+};
+
+// ------
 
 const ScanView: React.FC<ScanViewProps> = ({ onAddReceipt, linkedPayments, onLinkPayment }) => {
   const [scanState, setScanState] = useState<ScanState>('idle');
@@ -27,16 +138,18 @@ const ScanView: React.FC<ScanViewProps> = ({ onAddReceipt, linkedPayments, onLin
   const [isFirstScan, setIsFirstScan] = useState(true);
   const [linkingProvider, setLinkingProvider] = useState<string | null>(null);
 
-  // OCR結果
+  // OCR確認フォーム
   const [ocrStoreName, setOcrStoreName] = useState('コンビニ');
   const [ocrAmount, setOcrAmount] = useState<number | null>(null);
   const [ocrDate, setOcrDate] = useState('');
+  const [ocrItems, setOcrItems] = useState<string[]>([]);
 
   // 手入力フォーム
   const [manualStore, setManualStore] = useState('セブンイレブン');
   const [manualCustomStore, setManualCustomStore] = useState('');
   const [manualAmount, setManualAmount] = useState('');
   const [manualDate, setManualDate] = useState('');
+  const [manualItems, setManualItems] = useState<string[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -56,21 +169,20 @@ const ScanView: React.FC<ScanViewProps> = ({ onAddReceipt, linkedPayments, onLin
       setOcrStoreName(result.store_name);
       setOcrAmount(result.amount);
       setOcrDate(result.date);
+      setOcrItems(result.items);
 
       if (result.confidence === 'low') {
-        // 読み取り失敗 → 手入力へ（読み取れた値を引き継ぐ）
         setManualStore(
           STORE_OPTIONS.includes(result.store_name as typeof STORE_OPTIONS[number])
-            ? result.store_name
-            : 'その他'
+            ? result.store_name : 'その他'
         );
         setManualCustomStore(
           STORE_OPTIONS.includes(result.store_name as typeof STORE_OPTIONS[number])
-            ? ''
-            : result.store_name
+            ? '' : result.store_name
         );
         setManualDate(result.date);
         setManualAmount('');
+        setManualItems(result.items);
         setScanState('manual');
       } else {
         setScanState('confirm');
@@ -81,6 +193,7 @@ const ScanView: React.FC<ScanViewProps> = ({ onAddReceipt, linkedPayments, onLin
       setManualCustomStore('');
       setManualDate(todayStr());
       setManualAmount('');
+      setManualItems([]);
       setScanState('manual');
     }
   };
@@ -89,14 +202,13 @@ const ScanView: React.FC<ScanViewProps> = ({ onAddReceipt, linkedPayments, onLin
     const storeName = ocrStoreName || 'コンビニ';
     const amount = ocrAmount ?? 0;
     const date = ocrDate || todayStr();
-
     onAddReceipt({
       storeName,
       amount,
       date: `${date}T12:00`,
       isImpulse: amount >= 1000,
       impulseReasons: amount >= 1000 ? ['高額支出'] : [],
-      items: []
+      items: ocrItems,
     });
     setScanState('done');
   };
@@ -106,16 +218,30 @@ const ScanView: React.FC<ScanViewProps> = ({ onAddReceipt, linkedPayments, onLin
     const storeName = manualStore === 'その他' ? (manualCustomStore || 'コンビニ') : manualStore;
     const amount = parseInt(manualAmount, 10) || 0;
     const date = manualDate || todayStr();
-
     onAddReceipt({
       storeName,
       amount,
       date: `${date}T12:00`,
       isImpulse: amount >= 1000,
       impulseReasons: amount >= 1000 ? ['高額支出'] : [],
-      items: []
+      items: manualItems,
     });
     setScanState('done');
+  };
+
+  const switchToManual = () => {
+    setManualStore(
+      STORE_OPTIONS.includes(ocrStoreName as typeof STORE_OPTIONS[number])
+        ? ocrStoreName : 'その他'
+    );
+    setManualCustomStore(
+      STORE_OPTIONS.includes(ocrStoreName as typeof STORE_OPTIONS[number])
+        ? '' : ocrStoreName
+    );
+    setManualAmount(ocrAmount !== null ? String(ocrAmount) : '');
+    setManualDate(ocrDate);
+    setManualItems(ocrItems);
+    setScanState('manual');
   };
 
   const resetToIdle = () => {
@@ -149,15 +275,11 @@ const ScanView: React.FC<ScanViewProps> = ({ onAddReceipt, linkedPayments, onLin
               height: '220px',
               border: '2.5px dashed var(--ios-gray-dark)',
               borderRadius: '24px',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
               backgroundColor: '#FFFFFF',
               cursor: 'pointer',
-              padding: '20px',
-              boxSizing: 'border-box',
-              textAlign: 'center'
+              padding: '20px', boxSizing: 'border-box', textAlign: 'center'
             }}
             onClick={() => fileInputRef.current?.click()}
           >
@@ -173,7 +295,7 @@ const ScanView: React.FC<ScanViewProps> = ({ onAddReceipt, linkedPayments, onLin
               レシートを撮影
             </span>
             <span style={{ fontSize: '11px', color: 'var(--ios-text-secondary)', lineHeight: '1.4' }}>
-              カメラでレシートを撮影すると金額・店舗・日付を自動で読み取ります
+              カメラでレシートを撮影すると金額・店舗・日付・商品名を自動で読み取ります
             </span>
             <input
               type="file"
@@ -194,6 +316,7 @@ const ScanView: React.FC<ScanViewProps> = ({ onAddReceipt, linkedPayments, onLin
               setManualCustomStore('');
               setManualAmount('');
               setManualDate(todayStr());
+              setManualItems([]);
               setScanState('manual');
             }}
             style={{ padding: '14px 20px', fontSize: '15px', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
@@ -290,7 +413,6 @@ const ScanView: React.FC<ScanViewProps> = ({ onAddReceipt, linkedPayments, onLin
               </p>
             )}
           </div>
-          {/* プログレスバー */}
           <div style={{ width: '100%', backgroundColor: '#E5E5EA', borderRadius: '8px', height: '8px', overflow: 'hidden' }}>
             <div style={{
               height: '100%', width: `${progress}%`,
@@ -312,57 +434,57 @@ const ScanView: React.FC<ScanViewProps> = ({ onAddReceipt, linkedPayments, onLin
             </span>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
-            <div className="ios-input-group">
-              <label className="ios-input-label">店舗名</label>
-              <input
-                type="text"
-                className="ios-input"
-                value={ocrStoreName}
-                onChange={e => setOcrStoreName(e.target.value)}
-              />
-            </div>
-            <div className="ios-input-group">
-              <label className="ios-input-label">金額 (円)</label>
-              <input
-                type="number"
-                className="ios-input"
-                value={ocrAmount ?? ''}
-                onChange={e => setOcrAmount(Number(e.target.value) || null)}
-                min="1"
-                placeholder="金額を入力"
-              />
-            </div>
-            <div className="ios-input-group">
-              <label className="ios-input-label">日付</label>
-              <input
-                type="date"
-                className="ios-input"
-                value={ocrDate}
-                onChange={e => setOcrDate(e.target.value)}
-              />
-            </div>
+          {/* 1. 店舗名 */}
+          <div className="ios-input-group">
+            <label className="ios-input-label">店舗名</label>
+            <input
+              type="text"
+              className="ios-input"
+              value={ocrStoreName}
+              onChange={e => setOcrStoreName(e.target.value)}
+            />
           </div>
 
+          {/* 2. 金額 */}
+          <div className="ios-input-group">
+            <label className="ios-input-label">金額 (円)</label>
+            <input
+              type="number"
+              className="ios-input"
+              value={ocrAmount ?? ''}
+              onChange={e => setOcrAmount(Number(e.target.value) || null)}
+              min="1"
+              placeholder="金額を入力"
+            />
+          </div>
+
+          {/* 3. 日付 */}
+          <div className="ios-input-group">
+            <label className="ios-input-label">日付</label>
+            <input
+              type="date"
+              className="ios-input"
+              value={ocrDate}
+              onChange={e => setOcrDate(e.target.value)}
+              style={dateInputStyle}
+            />
+          </div>
+
+          {/* 4. 商品名 */}
+          <div className="ios-input-group" style={{ marginBottom: '24px' }}>
+            <label className="ios-input-label">商品名（任意）</label>
+            <p style={{ fontSize: '11px', color: 'var(--ios-text-secondary)', marginBottom: '8px', lineHeight: 1.4 }}>
+              読み取り結果は参考です。必要に応じて修正してください。
+            </p>
+            <ItemsEditor items={ocrItems} onChange={setOcrItems} />
+          </div>
+
+          {/* 5. ボタン */}
           <div style={{ display: 'flex', gap: '12px' }}>
             <button
               type="button"
               className="ios-btn ios-btn-secondary"
-              onClick={() => {
-                setManualStore(
-                  STORE_OPTIONS.includes(ocrStoreName as typeof STORE_OPTIONS[number])
-                    ? ocrStoreName
-                    : 'その他'
-                );
-                setManualCustomStore(
-                  STORE_OPTIONS.includes(ocrStoreName as typeof STORE_OPTIONS[number])
-                    ? ''
-                    : ocrStoreName
-                );
-                setManualAmount(ocrAmount !== null ? String(ocrAmount) : '');
-                setManualDate(ocrDate);
-                setScanState('manual');
-              }}
+              onClick={switchToManual}
               style={{ flex: 1 }}
             >
               修正する
@@ -387,7 +509,7 @@ const ScanView: React.FC<ScanViewProps> = ({ onAddReceipt, linkedPayments, onLin
             手入力で登録
           </div>
 
-          {/* 店舗選択（4択ボタン） */}
+          {/* 1. 店舗名（4択ボタン） */}
           <div className="ios-input-group">
             <label className="ios-input-label">店舗名</label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
@@ -397,15 +519,12 @@ const ScanView: React.FC<ScanViewProps> = ({ onAddReceipt, linkedPayments, onLin
                   type="button"
                   onClick={() => setManualStore(store)}
                   style={{
-                    padding: '14px 8px',
-                    borderRadius: '12px',
+                    padding: '14px 8px', borderRadius: '12px',
                     border: '2px solid',
                     borderColor: manualStore === store ? 'var(--ios-primary)' : 'var(--ios-border)',
                     backgroundColor: manualStore === store ? 'var(--ios-primary-light)' : '#FFFFFF',
                     color: manualStore === store ? 'var(--ios-primary)' : 'var(--ios-text-main)',
-                    fontSize: '13px',
-                    fontWeight: '700',
-                    cursor: 'pointer'
+                    fontSize: '13px', fontWeight: '700', cursor: 'pointer'
                   }}
                 >
                   {store}
@@ -423,7 +542,7 @@ const ScanView: React.FC<ScanViewProps> = ({ onAddReceipt, linkedPayments, onLin
             )}
           </div>
 
-          {/* 金額 */}
+          {/* 2. 金額 */}
           <div className="ios-input-group">
             <label className="ios-input-label">金額 (円)</label>
             <input
@@ -437,7 +556,7 @@ const ScanView: React.FC<ScanViewProps> = ({ onAddReceipt, linkedPayments, onLin
             />
           </div>
 
-          {/* 日付 */}
+          {/* 3. 日付 */}
           <div className="ios-input-group">
             <label className="ios-input-label">日付</label>
             <input
@@ -446,10 +565,18 @@ const ScanView: React.FC<ScanViewProps> = ({ onAddReceipt, linkedPayments, onLin
               value={manualDate}
               onChange={e => setManualDate(e.target.value)}
               required
+              style={dateInputStyle}
             />
           </div>
 
-          <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+          {/* 4. 商品名 */}
+          <div className="ios-input-group" style={{ marginBottom: '24px' }}>
+            <label className="ios-input-label">商品名（任意）</label>
+            <ItemsEditor items={manualItems} onChange={setManualItems} />
+          </div>
+
+          {/* 5. ボタン */}
+          <div style={{ display: 'flex', gap: '12px' }}>
             <button
               type="button"
               className="ios-btn ios-btn-secondary"
