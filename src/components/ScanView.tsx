@@ -208,7 +208,7 @@ const ImpulseSelector: React.FC<{
           fontWeight: '700', fontSize: '14px',
         }}
       >
-        😅 はい
+        はい
       </button>
       <button
         type="button"
@@ -221,7 +221,7 @@ const ImpulseSelector: React.FC<{
           fontWeight: '700', fontSize: '14px',
         }}
       >
-        😊 いいえ
+        いいえ
       </button>
     </div>
     {isImpulse === true && (
