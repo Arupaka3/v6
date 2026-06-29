@@ -831,6 +831,7 @@ function App() {
                 onAddReceipt={handleAddReceipt}
                 linkedPayments={linkedPayments}
                 onLinkPayment={handleLinkPayment}
+                userId={session?.user.id ?? null}
               />
             )}
             {activeTab === 'analytics' && (
@@ -1004,6 +1005,15 @@ function App() {
 
       {/* ホームインジケータ */}
       <div className="phone-home-indicator"></div>
+
+      {/* OSMクレジット（位置情報機能使用のため） */}
+      <div style={{
+        textAlign: 'center', fontSize: '9px',
+        color: 'var(--ios-text-secondary)', padding: '2px 0 4px',
+        opacity: 0.6,
+      }}>
+        地図データ © OpenStreetMap contributors
+      </div>
     </div>
   );
 }
