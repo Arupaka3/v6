@@ -186,6 +186,77 @@ const ItemsEditor: React.FC<{
 
 // ─────────────────────────────────────────────────────────
 
+const IMPULSE_REASONS = ['深夜利用', '高額支出', 'ついで買い', '1日複数回'] as const;
+
+const ImpulseSelector: React.FC<{
+  isImpulse: boolean | null;
+  reasons: string[];
+  onChangeImpulse: (v: boolean) => void;
+  onToggleReason: (r: string) => void;
+}> = ({ isImpulse, reasons, onChangeImpulse, onToggleReason }) => (
+  <div className="ios-input-group" style={{ marginBottom: '16px' }}>
+    <label className="ios-input-label">衝動買いでしたか？</label>
+    <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+      <button
+        type="button"
+        onClick={() => onChangeImpulse(true)}
+        style={{
+          flex: 1, padding: '11px 8px', borderRadius: '12px', cursor: 'pointer',
+          border: `2px solid ${isImpulse === true ? 'var(--ios-red)' : 'var(--ios-border)'}`,
+          backgroundColor: isImpulse === true ? 'var(--ios-red-light)' : '#fff',
+          color: isImpulse === true ? 'var(--ios-red)' : 'var(--ios-text-secondary)',
+          fontWeight: '700', fontSize: '14px',
+        }}
+      >
+        😅 はい
+      </button>
+      <button
+        type="button"
+        onClick={() => onChangeImpulse(false)}
+        style={{
+          flex: 1, padding: '11px 8px', borderRadius: '12px', cursor: 'pointer',
+          border: `2px solid ${isImpulse === false ? 'var(--ios-primary)' : 'var(--ios-border)'}`,
+          backgroundColor: isImpulse === false ? 'var(--ios-primary-light)' : '#fff',
+          color: isImpulse === false ? 'var(--ios-primary)' : 'var(--ios-text-secondary)',
+          fontWeight: '700', fontSize: '14px',
+        }}
+      >
+        😊 いいえ
+      </button>
+    </div>
+    {isImpulse === true && (
+      <div>
+        <p style={{ fontSize: '11px', fontWeight: '700', color: 'var(--ios-text-secondary)', margin: '0 0 8px' }}>
+          理由（複数選択可）
+        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+          {IMPULSE_REASONS.map(reason => {
+            const selected = reasons.includes(reason);
+            return (
+              <button
+                key={reason}
+                type="button"
+                onClick={() => onToggleReason(reason)}
+                style={{
+                  padding: '6px 14px', borderRadius: '20px', cursor: 'pointer',
+                  border: `1.5px solid ${selected ? 'var(--ios-red)' : 'var(--ios-border)'}`,
+                  backgroundColor: selected ? 'var(--ios-red-light)' : '#fff',
+                  color: selected ? 'var(--ios-red)' : 'var(--ios-text-secondary)',
+                  fontSize: '13px', fontWeight: '600',
+                }}
+              >
+                {reason}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    )}
+  </div>
+);
+
+// ─────────────────────────────────────────────────────────
+
 const ScanView: React.FC<ScanViewProps> = ({
   onAddReceipt, linkedPayments, onLinkPayment, userId
 }) => {
@@ -199,12 +270,16 @@ const ScanView: React.FC<ScanViewProps> = ({
   const [ocrAmount, setOcrAmount] = useState<number | null>(null);
   const [ocrDate, setOcrDate] = useState('');
   const [ocrItems, setOcrItems] = useState<string[]>([]);
+  const [ocrIsImpulse, setOcrIsImpulse] = useState<boolean | null>(null);
+  const [ocrImpulseReasons, setOcrImpulseReasons] = useState<string[]>([]);
 
   // 手入力フォーム
   const [manualStoreName, setManualStoreName] = useState('セブンイレブン');
   const [manualAmount, setManualAmount] = useState('');
   const [manualDate, setManualDate] = useState('');
   const [manualItems, setManualItems] = useState<string[]>([]);
+  const [manualIsImpulse, setManualIsImpulse] = useState<boolean | null>(null);
+  const [manualImpulseReasons, setManualImpulseReasons] = useState<string[]>([]);
 
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -270,11 +345,12 @@ const ScanView: React.FC<ScanViewProps> = ({
     const storeName = ocrStoreName || 'コンビニ';
     const amount = ocrAmount ?? 0;
     const date = ocrDate || todayStr();
+    const isImpulse = ocrIsImpulse ?? false;
     onAddReceipt({
       storeName, amount,
       date: `${date}T12:00`,
-      isImpulse: amount >= 1000,
-      impulseReasons: amount >= 1000 ? ['高額支出'] : [],
+      isImpulse,
+      impulseReasons: isImpulse ? ocrImpulseReasons : [],
       items: ocrItems,
     });
     setScanState('done');
@@ -285,11 +361,12 @@ const ScanView: React.FC<ScanViewProps> = ({
     const storeName = manualStoreName || 'コンビニ';
     const amount = parseInt(manualAmount, 10) || 0;
     const date = manualDate || todayStr();
+    const isImpulse = manualIsImpulse ?? false;
     onAddReceipt({
       storeName, amount,
       date: `${date}T12:00`,
-      isImpulse: amount >= 1000,
-      impulseReasons: amount >= 1000 ? ['高額支出'] : [],
+      isImpulse,
+      impulseReasons: isImpulse ? manualImpulseReasons : [],
       items: manualItems,
     });
     setScanState('done');
@@ -300,12 +377,18 @@ const ScanView: React.FC<ScanViewProps> = ({
     setManualAmount(ocrAmount !== null ? String(ocrAmount) : '');
     setManualDate(ocrDate);
     setManualItems(ocrItems);
+    setManualIsImpulse(ocrIsImpulse);
+    setManualImpulseReasons(ocrImpulseReasons);
     setScanState('manual');
   };
 
   const resetToIdle = () => {
     setScanState('idle');
     setProgress(0);
+    setOcrIsImpulse(null);
+    setOcrImpulseReasons([]);
+    setManualIsImpulse(null);
+    setManualImpulseReasons([]);
     if (cameraInputRef.current) cameraInputRef.current.value = '';
     if (galleryInputRef.current) galleryInputRef.current.value = '';
   };
@@ -548,7 +631,7 @@ const ScanView: React.FC<ScanViewProps> = ({
           </div>
 
           {/* 4. 商品名 */}
-          <div className="ios-input-group" style={{ marginBottom: '24px' }}>
+          <div className="ios-input-group">
             <label className="ios-input-label">商品名（任意）</label>
             <p style={{ fontSize: '11px', color: 'var(--ios-text-secondary)', marginBottom: '8px', lineHeight: 1.4 }}>
               読み取り結果は参考です。必要に応じて修正してください。
@@ -556,7 +639,17 @@ const ScanView: React.FC<ScanViewProps> = ({
             <ItemsEditor items={ocrItems} onChange={setOcrItems} userId={userId} />
           </div>
 
-          {/* 5. ボタン */}
+          {/* 5. 衝動買い */}
+          <ImpulseSelector
+            isImpulse={ocrIsImpulse}
+            reasons={ocrImpulseReasons}
+            onChangeImpulse={setOcrIsImpulse}
+            onToggleReason={r => setOcrImpulseReasons(prev =>
+              prev.includes(r) ? prev.filter(x => x !== r) : [...prev, r]
+            )}
+          />
+
+          {/* 6. ボタン */}
           <div style={{ display: 'flex', gap: '12px' }}>
             <button type="button" className="ios-btn ios-btn-secondary" onClick={switchToManual} style={{ flex: 1 }}>
               修正する
@@ -604,12 +697,22 @@ const ScanView: React.FC<ScanViewProps> = ({
           </div>
 
           {/* 4. 商品名 */}
-          <div className="ios-input-group" style={{ marginBottom: '24px' }}>
+          <div className="ios-input-group">
             <label className="ios-input-label">商品名（任意）</label>
             <ItemsEditor items={manualItems} onChange={setManualItems} userId={userId} />
           </div>
 
-          {/* 5. ボタン */}
+          {/* 5. 衝動買い */}
+          <ImpulseSelector
+            isImpulse={manualIsImpulse}
+            reasons={manualImpulseReasons}
+            onChangeImpulse={setManualIsImpulse}
+            onToggleReason={r => setManualImpulseReasons(prev =>
+              prev.includes(r) ? prev.filter(x => x !== r) : [...prev, r]
+            )}
+          />
+
+          {/* 6. ボタン */}
           <div style={{ display: 'flex', gap: '12px' }}>
             <button type="button" className="ios-btn ios-btn-secondary" onClick={resetToIdle} style={{ flex: 1 }}>
               キャンセル
