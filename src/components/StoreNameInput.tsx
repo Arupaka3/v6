@@ -78,13 +78,22 @@ const getNearbyConbini = async (): Promise<NearbyStore[]> => {
 
   const data = await fetchWithFallback(query);
 
+  // チェーン判定：日本語名・英語名・brandタグを全て対象にする
+  const CHAIN_RE = /セブン|7-?eleven|ファミリー|family\s*mart|ローソン|lawson|ミニストップ|ministop|デイリー|daily\s*yamazaki|コンビニ/i;
+
   const seen = new Set<string>();
   const stores: NearbyStore[] = [];
 
   for (const el of data.elements as any[]) {
-    const rawName: string | undefined = el.tags?.['name:ja'] || el.tags?.name;
+    const tags = el.tags ?? {};
+    // name:ja → name → brand の順で表示名を決定
+    const rawName: string | undefined = tags['name:ja'] || tags.name || tags.brand;
     if (!rawName) continue;
-    if (!/セブン|ファミリー|ローソン|ミニストップ|デイリー|コンビニ/i.test(rawName)) continue;
+
+    // チェーン判定（name・brandどちらかがマッチすれば通す）
+    const combined = `${rawName} ${tags.brand ?? ''}`;
+    if (!CHAIN_RE.test(combined)) continue;
+
     const name = rawName.length > 22 ? rawName.slice(0, 22) + '…' : rawName;
     if (seen.has(name)) continue;
     seen.add(name);
