@@ -253,9 +253,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     localStorage.setItem('cobaco_reduction_rate', String(next));
   };
 
-  const handleExportCSV = () => {
+  const [csvPreview, setCsvPreview] = useState<string | null>(null);
+
+  const handleExportCSV = async () => {
     if (receipts.length === 0) { onNotify('エクスポートするデータがありません'); return; }
-    const bom = '﻿';
     const header = '日付,店舗名,金額,商品名';
     const rows = receipts.map(r => {
       const date = r.date.replace('T', ' ').slice(0, 16);
@@ -263,13 +264,34 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       const items = `"${(r.items || []).join(' ')}"`;
       return `${date},${store},${r.amount},${items}`;
     });
-    const csv = bom + [header, ...rows].join('\n');
-    const a = document.createElement('a');
-    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-    a.download = 'yorimichi_log.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const csv = '﻿' + [header, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+
+    // iOS: Web Share API でファイル共有
+    if (typeof navigator.share === 'function') {
+      const file = new File([blob], 'yorimichi_log.csv', { type: 'text/csv' });
+      try {
+        await navigator.share({ files: [file], title: 'よりみちログ データ' });
+        return;
+      } catch (e) {
+        if ((e as Error).name === 'AbortError') return; // ユーザーがキャンセル
+      }
+    }
+
+    // デスクトップ: Blob URL でダウンロード
+    try {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'yorimichi_log.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      // 最終フォールバック: テキストをモーダルで表示してコピー
+      setCsvPreview(csv);
+    }
   };
 
   const runReset = async (fn: () => Promise<void>, successMsg: string) => {
@@ -402,6 +424,31 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       </SettingsBlock>
 
       <div style={{ height: '32px' }} />
+
+      {/* CSV プレビューモーダル（フォールバック） */}
+      {csvPreview !== null && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 6000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+          <div style={{ backgroundColor: '#fff', borderTopLeftRadius: '24px', borderTopRightRadius: '24px', padding: '24px 20px 36px', width: '100%', maxHeight: '70vh', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '16px', fontWeight: '800' }}>CSVデータ</span>
+              <button onClick={() => setCsvPreview(null)} style={{ border: 'none', background: 'var(--ios-gray-light)', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>×</button>
+            </div>
+            <p style={{ fontSize: '12px', color: 'var(--ios-text-secondary)', margin: 0 }}>以下のテキストを全選択してコピーしてください</p>
+            <textarea
+              readOnly
+              value={csvPreview}
+              style={{ flex: 1, minHeight: '160px', fontSize: '11px', fontFamily: 'monospace', border: '1px solid var(--ios-border)', borderRadius: '10px', padding: '10px', resize: 'none', color: 'var(--ios-text-main)', backgroundColor: '#F9F9FB' }}
+              onFocus={e => e.target.select()}
+            />
+            <button
+              onClick={() => { navigator.clipboard.writeText(csvPreview).then(() => { onNotify('コピーしました'); setCsvPreview(null); }); }}
+              className="ios-btn"
+            >
+              クリップボードにコピー
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 確認ダイアログ */}
       {resetMode === 'current-month' && (
