@@ -1,7 +1,6 @@
 // TODO: remove before production release - dev only
 import { useState, useEffect } from 'react';
-import type { ActiveTab, Receipt, SpendingGoal, SavingsGoal, Streak, UserBadge, MyItem, FavoriteStore } from './types';
-import { ITEM_CATEGORIES } from './types';
+import type { ActiveTab, Receipt, SpendingGoal, SavingsGoal, Streak, UserBadge } from './types';
 import TabBar from './components/TabBar';
 import HomeView from './components/HomeView';
 import ScanView from './components/ScanView';
@@ -11,9 +10,10 @@ import BadgesView from './components/BadgesView';
 import AuthView from './components/AuthView';
 import EditReceiptModal from './components/EditReceiptModal';
 import DevDashboard from './components/DevDashboard';
+import SettingsView from './components/SettingsView';
+import MyItemsView from './components/MyItemsView';
 import { supabase } from './lib/supabase';
 import type { Session } from '@supabase/supabase-js';
-import { X, LogOut, Plus } from 'lucide-react';
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -26,9 +26,6 @@ function App() {
   // 編集中のレシート情報
   const [editingReceipt, setEditingReceipt] = useState<Receipt | null>(null);
   
-  // 設定モーダルの表示ステート（バグ修正：App.tsxルートで管理）
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
-
   // v2追加のステート
   const [spendingGoal, setSpendingGoal] = useState<SpendingGoal>(() => {
     const savedSpending = localStorage.getItem('cobaco_spending_goal');
@@ -70,19 +67,6 @@ function App() {
   // バッジ関連のステート
   const [unlockedBadges, setUnlockedBadges] = useState<UserBadge[]>([]);
   const [badgeToasts, setBadgeToasts] = useState<{ id: string; badgeName: string }[]>([]);
-
-  // マイ定番商品のステート（設定モーダル用）
-  const [myItems, setMyItems] = useState<MyItem[]>([]);
-  const [settingsNewItem, setSettingsNewItem] = useState('');
-  const [settingsNewItemCategory, setSettingsNewItemCategory] = useState('その他');
-  const [showAddItemInput, setShowAddItemInput] = useState(false);
-
-  // よく行く店舗のステート
-  const [favoriteStores, setFavoriteStores] = useState<FavoriteStore[]>([]);
-  const [settingsNewStore, setSettingsNewStore] = useState('');
-  const [showAddStoreInput, setShowAddStoreInput] = useState(false);
-
-
 
   // ログインセッションの監視
   useEffect(() => {
@@ -553,81 +537,6 @@ function App() {
     }
   };
 
-  // ── マイ定番商品の管理 ──────────────────────────────────
-
-  const fetchMyItems = async () => {
-    if (!session) return;
-    const { data } = await supabase
-      .from('my_items')
-      .select('*')
-      .eq('user_id', session.user.id)
-      .order('use_count', { ascending: false })
-      .limit(20);
-    if (data) setMyItems(data as MyItem[]);
-  };
-
-  const handleDeleteMyItem = async (id: string) => {
-    await supabase.from('my_items').delete().eq('id', id);
-    setMyItems(prev => prev.filter(i => i.id !== id));
-  };
-
-  const handleAddMyItemFromSettings = async () => {
-    const name = settingsNewItem.trim();
-    if (!name || !session) return;
-    const { error } = await supabase.rpc('upsert_my_item', {
-      p_user_id: session.user.id,
-      p_name: name,
-      p_category: settingsNewItemCategory,
-    });
-    if (error) {
-      console.error('Failed to add item:', error);
-      return;
-    }
-    setSettingsNewItem('');
-    setSettingsNewItemCategory('その他');
-    setShowAddItemInput(false);
-    await fetchMyItems();
-  };
-
-  // よく行く店舗の管理
-  const fetchFavoriteStores = async () => {
-    if (!session) return;
-    const { data } = await supabase
-      .from('favorite_stores')
-      .select('*')
-      .eq('user_id', session.user.id)
-      .order('created_at', { ascending: false });
-    if (data) setFavoriteStores(data as FavoriteStore[]);
-  };
-
-  const handleAddFavoriteStore = async () => {
-    const name = settingsNewStore.trim();
-    if (!name || !session) return;
-    const { error } = await supabase
-      .from('favorite_stores')
-      .upsert({ user_id: session.user.id, name }, { onConflict: 'user_id,name', ignoreDuplicates: true });
-    if (error) { console.error('Failed to add store:', error); return; }
-    setSettingsNewStore('');
-    setShowAddStoreInput(false);
-    await fetchFavoriteStores();
-  };
-
-  const handleDeleteFavoriteStore = async (id: string) => {
-    await supabase.from('favorite_stores').delete().eq('id', id);
-    setFavoriteStores(prev => prev.filter(s => s.id !== id));
-  };
-
-  // 設定モーダルを開くときにmy_itemsとfavorite_storesを取得
-  useEffect(() => {
-    if (showSettingsModal && session) {
-      fetchMyItems();
-      fetchFavoriteStores();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showSettingsModal]);
-
-  // ────────────────────────────────────────────────────────
-
   // レシートの削除 (Supabaseから削除)
   const handleDeleteReceipt = async (id: string) => {
     if (!session) return;
@@ -691,6 +600,19 @@ function App() {
     } catch (e) {
       console.error('Failed to logout', e);
     }
+  };
+
+  // 全データ削除
+  const handleDeleteAllData = async () => {
+    if (!session) return;
+    await Promise.allSettled([
+      supabase.from('usage_history').delete().eq('user_id', session.user.id),
+      supabase.from('wish_list').delete().eq('user_id', session.user.id),
+      supabase.from('streaks').delete().eq('user_id', session.user.id),
+      supabase.from('badges').delete().eq('user_id', session.user.id),
+    ]);
+    setReceipts([]);
+    setStreak({ currentStreak: 0, bestStreak: 0, lastConviniDate: null });
   };
 
   // 節約目標の更新
@@ -918,7 +840,7 @@ function App() {
                 streak={streak}
                 onNavigate={setActiveTab}
                 onDeleteReceipt={handleDeleteReceipt}
-                onOpenSettings={() => setShowSettingsModal(true)}
+                onOpenSettings={() => setActiveTab('settings')}
                 onEditReceipt={setEditingReceipt}
               />
             )}
@@ -953,252 +875,34 @@ function App() {
             {activeTab === 'badges' && (
               <BadgesView unlockedBadges={unlockedBadges} />
             )}
+            {activeTab === 'settings' && (
+              <SettingsView
+                session={session}
+                spendingGoal={spendingGoal}
+                monthlyBaseSavings={monthlyBaseSavings}
+                monthlyIncome={monthlyIncome}
+                receipts={receipts}
+                onBack={() => setActiveTab('home')}
+                onNavigateToMyItems={() => setActiveTab('my-items')}
+                onUpdateSpendingGoal={handleUpdateSpendingGoal}
+                onUpdateBaseSavings={handleUpdateBaseSavings}
+                onUpdateMonthlyIncome={handleUpdateMonthlyIncome}
+                onLogout={handleLogout}
+                onDeleteAllData={handleDeleteAllData}
+                onNotify={triggerNotification}
+              />
+            )}
+            {activeTab === 'my-items' && session && (
+              <MyItemsView
+                userId={session.user.id}
+                onBack={() => setActiveTab('settings')}
+              />
+            )}
           </main>
 
           {/* ナビゲーションバー */}
           <TabBar activeTab={activeTab} setActiveTab={setActiveTab} />
         </>
-      )}
-
-      {/* 設定モーダル (バグ修正: phone-frame直下に配置してスクロールエリアの影響を避ける) */}
-      {showSettingsModal && session && (
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.4)',
-          zIndex: 3000,
-          display: 'flex',
-          alignItems: 'flex-end',
-          animation: 'fadeIn 0.2s ease-out'
-        }}>
-          <div style={{
-            width: '100%',
-            backgroundColor: 'var(--ios-bg)',
-            borderTopLeftRadius: '24px',
-            borderTopRightRadius: '24px',
-            padding: '20px 16px 32px 16px',
-            boxSizing: 'border-box',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '16px',
-            maxHeight: '85vh',
-            overflowY: 'auto',
-            animation: 'slideUp 0.3s cubic-bezier(0.1, 0.8, 0.3, 1)'
-          }}>
-            {/* モーダルヘッダー */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '12px', borderBottom: '0.5px solid var(--ios-border)' }}>
-              <span style={{ fontSize: '18px', fontWeight: '800' }}>設定</span>
-              <button 
-                onClick={() => setShowSettingsModal(false)}
-                style={{
-                  border: 'none',
-                  background: 'var(--ios-gray-light)',
-                  color: 'var(--ios-text-main)',
-                  width: '30px',
-                  height: '30px',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer'
-                }}
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            {/* メールアドレス表示 */}
-            <div className="ios-card" style={{ margin: 0, padding: '16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <span style={{ fontSize: '11px', color: 'var(--ios-text-secondary)', fontWeight: 600 }}>ログイン中のアカウント</span>
-              <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--ios-text-main)', wordBreak: 'break-all' }}>
-                {session.user.email || '未設定'}
-              </span>
-            </div>
-
-            {/* よく行く店舗 */}
-            <div className="ios-card" style={{ margin: 0, padding: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <span style={{ fontSize: '14px', fontWeight: '800' }}>よく行く店舗</span>
-                <button
-                  type="button"
-                  onClick={() => { setShowAddStoreInput(v => !v); setSettingsNewStore(''); }}
-                  style={{
-                    border: 'none', background: 'none', cursor: 'pointer',
-                    color: 'var(--ios-primary)', fontSize: '12px', fontWeight: '700',
-                    display: 'flex', alignItems: 'center', gap: '3px',
-                  }}
-                >
-                  <Plus size={13} strokeWidth={3} />
-                  店舗を追加
-                </button>
-              </div>
-              {showAddStoreInput && (
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-                  <input
-                    type="text"
-                    className="ios-input"
-                    value={settingsNewStore}
-                    onChange={e => setSettingsNewStore(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddFavoriteStore(); } }}
-                    placeholder="例: セブンイレブン 〇〇店"
-                    autoFocus
-                    style={{ flex: 1, fontSize: '14px' }}
-                  />
-                  <button type="button" className="ios-btn" onClick={handleAddFavoriteStore}
-                    style={{ width: 'auto', padding: '0 14px', flexShrink: 0 }}>
-                    追加
-                  </button>
-                </div>
-              )}
-              {favoriteStores.length === 0 ? (
-                <p style={{ fontSize: '12px', color: 'var(--ios-text-secondary)', textAlign: 'center', margin: '8px 0' }}>
-                  登録済みの店舗はありません
-                </p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  {favoriteStores.map(store => (
-                    <div key={store.id} style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '8px 10px', borderRadius: '10px', backgroundColor: '#F9F9FB',
-                    }}>
-                      <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--ios-text-main)' }}>
-                        {store.name}
-                      </span>
-                      <button type="button" onClick={() => handleDeleteFavoriteStore(store.id)}
-                        style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--ios-text-secondary)', display: 'flex', padding: 0 }}
-                        aria-label={`${store.name}を削除`}>
-                        <X size={14} strokeWidth={2.5} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* マイ定番商品 */}
-            <div className="ios-card" style={{ margin: 0, padding: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <span style={{ fontSize: '14px', fontWeight: '800' }}>マイ定番商品</span>
-                <button
-                  type="button"
-                  onClick={() => { setShowAddItemInput(v => !v); setSettingsNewItem(''); setSettingsNewItemCategory('その他'); }}
-                  style={{
-                    border: 'none', background: 'none', cursor: 'pointer',
-                    color: 'var(--ios-primary)', fontSize: '12px', fontWeight: '700',
-                    display: 'flex', alignItems: 'center', gap: '3px',
-                  }}
-                >
-                  <Plus size={13} strokeWidth={3} />
-                  商品を追加
-                </button>
-              </div>
-
-              {/* 追加入力 */}
-              {showAddItemInput && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input
-                      type="text"
-                      className="ios-input"
-                      value={settingsNewItem}
-                      onChange={e => setSettingsNewItem(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddMyItemFromSettings(); } }}
-                      placeholder="商品名を入力"
-                      autoFocus
-                      style={{ flex: 1, fontSize: '14px' }}
-                    />
-                    <button
-                      type="button"
-                      className="ios-btn"
-                      onClick={handleAddMyItemFromSettings}
-                      style={{ width: 'auto', padding: '0 14px', flexShrink: 0 }}
-                    >
-                      追加
-                    </button>
-                  </div>
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    {ITEM_CATEGORIES.map(cat => (
-                      <button
-                        key={cat}
-                        type="button"
-                        onClick={() => setSettingsNewItemCategory(cat)}
-                        style={{
-                          padding: '4px 10px', borderRadius: '20px', cursor: 'pointer', fontSize: '12px', fontWeight: '600',
-                          border: `1.5px solid ${settingsNewItemCategory === cat ? 'var(--ios-primary)' : 'var(--ios-border)'}`,
-                          backgroundColor: settingsNewItemCategory === cat ? 'var(--ios-primary-light)' : '#fff',
-                          color: settingsNewItemCategory === cat ? 'var(--ios-primary)' : 'var(--ios-text-secondary)',
-                        }}
-                      >
-                        {cat}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* 商品一覧（カテゴリ別） */}
-              {myItems.length === 0 ? (
-                <p style={{ fontSize: '12px', color: 'var(--ios-text-secondary)', textAlign: 'center', margin: '8px 0' }}>
-                  登録済みの商品はありません
-                </p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {ITEM_CATEGORIES.filter(cat => myItems.some(i => (i.category || 'その他') === cat)).map(cat => (
-                    <div key={cat}>
-                      <p style={{ fontSize: '11px', fontWeight: '700', color: 'var(--ios-text-secondary)', margin: '0 0 4px' }}>
-                        {cat}
-                      </p>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        {myItems.filter(i => (i.category || 'その他') === cat).map(item => (
-                          <div key={item.id} style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            padding: '8px 10px', borderRadius: '10px', backgroundColor: '#F9F9FB',
-                          }}>
-                            <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--ios-text-main)' }}>
-                              {item.name}
-                            </span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <span style={{ fontSize: '11px', color: 'var(--ios-text-secondary)' }}>
-                                {item.use_count}回
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteMyItem(item.id)}
-                                style={{
-                                  border: 'none', background: 'none', cursor: 'pointer',
-                                  color: 'var(--ios-text-secondary)', display: 'flex', padding: 0,
-                                }}
-                                aria-label={`${item.name}を削除`}
-                              >
-                                <X size={14} strokeWidth={2.5} />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* ログアウトボタン */}
-            <button
-              onClick={() => {
-                handleLogout();
-                setShowSettingsModal(false);
-              }}
-              className="ios-btn ios-btn-danger"
-              style={{ width: '100%' }}
-            >
-              <LogOut size={16} />
-              ログアウト
-            </button>
-          </div>
-        </div>
       )}
 
       {/* 編集モーダル */}

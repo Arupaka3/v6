@@ -8,7 +8,7 @@ export interface Receipt {
   items?: string[]; // 購入品目 (例: ["エナジードリンク", "ポテトチップス"])
 }
 
-export type ActiveTab = 'home' | 'scan' | 'analytics' | 'goals' | 'badges';
+export type ActiveTab = 'home' | 'scan' | 'analytics' | 'goals' | 'badges' | 'settings' | 'my-items';
 
 export interface SavingsGoal {
   id: string;
