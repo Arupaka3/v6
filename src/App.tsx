@@ -64,6 +64,9 @@ function App() {
     return [];
   });
 
+  // アバターURL
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
   // バッジ関連のステート
   const [unlockedBadges, setUnlockedBadges] = useState<UserBadge[]>([]);
   const [badgeToasts, setBadgeToasts] = useState<{ id: string; badgeName: string }[]>([]);
@@ -348,6 +351,19 @@ function App() {
     }
   };
 
+  // プロフィール情報を取得する
+  const fetchProfile = async () => {
+    if (!session) return;
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('avatar_url')
+        .eq('id', session.user.id)
+        .single();
+      if (data?.avatar_url) setAvatarUrl(data.avatar_url);
+    } catch { /* table may not exist yet */ }
+  };
+
   // Supabaseから履歴一覧を取得する
   const fetchReceipts = async (): Promise<{ receipts: Receipt[]; streak: Streak }> => {
     const defaultVal = { receipts: [], streak: { currentStreak: 0, bestStreak: 0, lastConviniDate: null } };
@@ -464,6 +480,7 @@ function App() {
           const badgesData = await fetchUnlockedBadges();
           await fetchSavingsGoals();
           await fetchBaseSavings();
+          await fetchProfile();
           
           // 初回バッジチェック
           await checkAndUnlockBadges(receiptsData, streakData.currentStreak, spendingGoal, linkedPayments, badgesData);
@@ -481,6 +498,7 @@ function App() {
       setMonthlyBaseSavings(5000);
       setMonthlyIncome(null);
       setStreak({ currentStreak: 0, bestStreak: 0, lastConviniDate: null });
+      setAvatarUrl(null);
       setIsLoading(false);
     }
   }, [session]);
@@ -602,17 +620,53 @@ function App() {
     }
   };
 
-  // 全データ削除
-  const handleDeleteAllData = async () => {
+  // 今月のデータをリセット
+  const handleResetCurrentMonth = async () => {
+    if (!session) return;
+    const now = new Date();
+    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    const { error } = await supabase
+      .from('usage_history')
+      .delete()
+      .eq('user_id', session.user.id)
+      .gte('used_at', monthStart);
+    if (error) throw error;
+    await fetchReceipts();
+  };
+
+  // 全レシートをリセット
+  const handleResetAllReceipts = async () => {
+    if (!session) return;
+    const { error } = await supabase
+      .from('usage_history')
+      .delete()
+      .eq('user_id', session.user.id);
+    if (error) throw error;
+    setReceipts([]);
+    setStreak({ currentStreak: 0, bestStreak: 0, lastConviniDate: null });
+  };
+
+  // アプリの完全初期化
+  const handleFullReset = async () => {
     if (!session) return;
     await Promise.allSettled([
       supabase.from('usage_history').delete().eq('user_id', session.user.id),
       supabase.from('wish_list').delete().eq('user_id', session.user.id),
       supabase.from('streaks').delete().eq('user_id', session.user.id),
       supabase.from('badges').delete().eq('user_id', session.user.id),
+      supabase.from('my_items').delete().eq('user_id', session.user.id),
+      supabase.from('user_settings').upsert({
+        user_id: session.user.id,
+        monthly_base_savings: 5000,
+        monthly_income: null,
+        updated_at: new Date().toISOString(),
+      }),
     ]);
     setReceipts([]);
     setStreak({ currentStreak: 0, bestStreak: 0, lastConviniDate: null });
+    setMonthlyBaseSavings(5000);
+    setMonthlyIncome(null);
+    localStorage.setItem('cobaco_reduction_rate', '20');
   };
 
   // 節約目標の更新
@@ -842,6 +896,7 @@ function App() {
                 onDeleteReceipt={handleDeleteReceipt}
                 onOpenSettings={() => setActiveTab('settings')}
                 onEditReceipt={setEditingReceipt}
+                avatarUrl={avatarUrl}
               />
             )}
             {activeTab === 'scan' && (
@@ -882,13 +937,17 @@ function App() {
                 monthlyBaseSavings={monthlyBaseSavings}
                 monthlyIncome={monthlyIncome}
                 receipts={receipts}
+                avatarUrl={avatarUrl}
+                onAvatarChange={url => setAvatarUrl(url)}
                 onBack={() => setActiveTab('home')}
                 onNavigateToMyItems={() => setActiveTab('my-items')}
                 onUpdateSpendingGoal={handleUpdateSpendingGoal}
                 onUpdateBaseSavings={handleUpdateBaseSavings}
                 onUpdateMonthlyIncome={handleUpdateMonthlyIncome}
                 onLogout={handleLogout}
-                onDeleteAllData={handleDeleteAllData}
+                onResetCurrentMonth={handleResetCurrentMonth}
+                onResetAllReceipts={handleResetAllReceipts}
+                onFullReset={handleFullReset}
                 onNotify={triggerNotification}
               />
             )}

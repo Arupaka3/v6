@@ -9,15 +9,17 @@ interface HomeViewProps {
   onDeleteReceipt?: (id: string) => void; // 履歴削除用
   onOpenSettings?: () => void;
   onEditReceipt?: (receipt: Receipt) => void;
+  avatarUrl?: string | null;
 }
 
-const HomeView: React.FC<HomeViewProps> = ({ 
-  receipts, 
+const HomeView: React.FC<HomeViewProps> = ({
+  receipts,
   streak,
-  onNavigate, 
-  onDeleteReceipt, 
-  onOpenSettings, 
-  onEditReceipt 
+  onNavigate,
+  onDeleteReceipt,
+  onOpenSettings,
+  onEditReceipt,
+  avatarUrl,
 }) => {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [graphPeriod, setGraphPeriod] = useState<7 | 30 | 90>(7);
@@ -323,7 +325,7 @@ const HomeView: React.FC<HomeViewProps> = ({
         <span>ホーム</span>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {/* 設定ボタン */}
-          <button 
+          <button
             onClick={() => onOpenSettings && onOpenSettings()}
             style={{
               border: 'none',
@@ -335,10 +337,16 @@ const HomeView: React.FC<HomeViewProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              overflow: 'hidden',
+              padding: 0,
             }}
           >
-            <User size={18} />
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="プロフィール" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
+            ) : (
+              <User size={18} />
+            )}
           </button>
         </div>
       </div>
