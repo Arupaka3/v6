@@ -41,7 +41,7 @@ const ItemSelector: React.FC<ItemSelectorProps> = ({ items, onChange, userId }) 
         }
         return [
           ...prev,
-          { id: Date.now().toString(), user_id: userId, name, use_count: 1, created_at: new Date().toISOString() }
+          { id: Date.now().toString(), user_id: userId, name, category: 'その他', use_count: 1, created_at: new Date().toISOString() }
         ];
       });
     } catch {
