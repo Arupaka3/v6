@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Camera } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
-import type { SpendingGoal, Receipt, FavoriteStore } from '../types';
+import type { SpendingGoal, Receipt } from '../types';
 import { supabase } from '../lib/supabase';
 
 interface SettingsViewProps {
@@ -166,12 +166,12 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const [displayName, setDisplayName] = useState('');
   const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(avatarUrl);
-  const [favoriteStores, setFavoriteStores] = useState<FavoriteStore[]>([]);
-  const [newStoreName, setNewStoreName] = useState('');
-  const [showAddStore, setShowAddStore] = useState(false);
   const [resetMode, setResetMode] = useState<ResetMode>(null);
   const [deleting, setDeleting] = useState(false);
-  const [passwordSent, setPasswordSent] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const [reductionRate, setReductionRate] = useState<number>(() => {
@@ -183,7 +183,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   // sync localAvatarUrl when prop changes
   useEffect(() => { setLocalAvatarUrl(avatarUrl); }, [avatarUrl]);
 
-  // fetch display name and favorite stores on mount
+  // fetch display name on mount
   useEffect(() => {
     (async () => {
       try {
@@ -191,25 +191,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         if (data?.display_name) setDisplayName(data.display_name);
       } catch { /* table may not exist */ }
     })();
-    fetchFavoriteStores();
   }, [session.user.id]);
-
-  const fetchFavoriteStores = async () => {
-    const { data } = await supabase.from('favorite_stores').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false });
-    if (data) setFavoriteStores(data as FavoriteStore[]);
-  };
-
-  const handleAddStore = async () => {
-    const name = newStoreName.trim();
-    if (!name) return;
-    const { error } = await supabase.from('favorite_stores').upsert({ user_id: session.user.id, name }, { onConflict: 'user_id,name', ignoreDuplicates: true });
-    if (!error) { setNewStoreName(''); setShowAddStore(false); await fetchFavoriteStores(); }
-  };
-
-  const handleDeleteStore = async (id: string) => {
-    await supabase.from('favorite_stores').delete().eq('id', id);
-    setFavoriteStores(prev => prev.filter(s => s.id !== id));
-  };
 
   const handleSaveDisplayName = async (name: string) => {
     setDisplayName(name);
@@ -218,37 +200,51 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     } catch { /* ignore if table doesn't exist */ }
   };
 
-  const handleResetPassword = async () => {
+  const handleChangePassword = async () => {
+    if (newPassword.length < 6) { onNotify('パスワードは6文字以上で入力してください'); return; }
+    if (newPassword !== confirmPassword) { onNotify('パスワードが一致しません'); return; }
+    setPasswordLoading(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(session.user.email!, {
-        redirectTo: window.location.origin,
-      });
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
-      setPasswordSent(true);
-      onNotify('パスワード変更メールを送信しました');
-      setTimeout(() => setPasswordSent(false), 5000);
+      setNewPassword(''); setConfirmPassword(''); setShowPasswordForm(false);
+      onNotify('パスワードを変更しました');
     } catch {
-      onNotify('メール送信に失敗しました。しばらく後で再試行してください');
+      onNotify('パスワード変更に失敗しました');
+    } finally {
+      setPasswordLoading(false);
     }
   };
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    try {
-      const ext = file.name.split('.').pop() ?? 'jpg';
-      const path = `${session.user.id}/avatar.${ext}`;
-      const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, { upsert: true, contentType: file.type });
-      if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
-      const url = urlData.publicUrl + '?t=' + Date.now();
-      await supabase.from('profiles').upsert({ id: session.user.id, avatar_url: url }, { onConflict: 'id' });
-      setLocalAvatarUrl(url);
-      onAvatarChange(url);
-      onNotify('プロフィール写真を更新しました');
-    } catch {
-      onNotify('写真のアップロードに失敗しました');
-    }
+    // Resize to 96×96 with center-crop, store as base64
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = async () => {
+      const size = Math.min(img.width, img.height);
+      const canvas = document.createElement('canvas');
+      canvas.width = 96; canvas.height = 96;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, (img.width - size) / 2, (img.height - size) / 2, size, size, 0, 0, 96, 96);
+      URL.revokeObjectURL(objectUrl);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      try {
+        const { error } = await supabase.from('profiles').upsert(
+          { id: session.user.id, avatar_url: dataUrl },
+          { onConflict: 'id' }
+        );
+        if (error) throw error;
+        setLocalAvatarUrl(dataUrl);
+        onAvatarChange(dataUrl);
+        onNotify('プロフィール写真を更新しました');
+      } catch {
+        onNotify('写真の保存に失敗しました');
+      }
+    };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); onNotify('画像の読み込みに失敗しました'); };
+    img.src = objectUrl;
   };
 
   const cycleReductionRate = () => {
@@ -325,15 +321,42 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           <input ref={avatarInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarUpload} />
         </div>
         <EditableTextRow label="表示名" rawValue={displayName} placeholder="未設定" onSave={handleSaveDisplayName} />
-        <div
-          onClick={handleResetPassword}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '52px', padding: '0 16px', borderBottom: 'none', backgroundColor: '#fff', cursor: 'pointer' }}
-        >
-          <span style={{ fontSize: '15px', color: 'var(--ios-text-main)' }}>パスワードを変更</span>
-          {passwordSent ? (
-            <span style={{ fontSize: '12px', color: 'var(--ios-primary)', fontWeight: '600' }}>メールを送信しました</span>
-          ) : (
-            <ChevronRight size={16} color="var(--ios-text-secondary)" />
+        {/* パスワード変更行 */}
+        <div style={{ borderTop: '0.5px solid var(--ios-border)' }}>
+          <div
+            onClick={() => setShowPasswordForm(v => !v)}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '52px', padding: '0 16px', cursor: 'pointer', backgroundColor: '#fff' }}
+          >
+            <span style={{ fontSize: '15px', color: 'var(--ios-text-main)' }}>パスワードを変更</span>
+            <ChevronRight size={16} color="var(--ios-text-secondary)" style={{ transform: showPasswordForm ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />
+          </div>
+          {showPasswordForm && (
+            <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: '#fff' }}>
+              <input
+                type="password"
+                className="ios-input"
+                placeholder="新しいパスワード（6文字以上）"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                style={{ fontSize: '14px' }}
+              />
+              <input
+                type="password"
+                className="ios-input"
+                placeholder="パスワードを再入力"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                style={{ fontSize: '14px' }}
+              />
+              <button
+                onClick={handleChangePassword}
+                disabled={passwordLoading}
+                className="ios-btn"
+                style={{ fontSize: '14px', padding: '10px', opacity: passwordLoading ? 0.6 : 1 }}
+              >
+                {passwordLoading ? '変更中...' : 'パスワードを変更する'}
+              </button>
+            </div>
           )}
         </div>
       </SettingsBlock>
@@ -347,46 +370,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         <TapRow label="コンビニ削減率" value={`${reductionRate}%`} last onClick={cycleReductionRate} />
       </SettingsBlock>
 
-      {/* よく行く店舗セクション */}
-      <SectionHeader>よく行く店舗</SectionHeader>
+      {/* マイリストセクション */}
+      <SectionHeader>マイリスト</SectionHeader>
       <SettingsBlock>
-        {favoriteStores.map((store) => (
-          <div key={store.id} style={{ display: 'flex', alignItems: 'center', height: '52px', padding: '0 16px', borderBottom: '0.5px solid var(--ios-border)', backgroundColor: '#fff' }}>
-            <span style={{ flex: 1, fontSize: '15px', color: 'var(--ios-text-main)' }}>{store.name}</span>
-            <button onClick={() => handleDeleteStore(store.id)} style={{ border: 'none', background: 'none', padding: '6px', cursor: 'pointer', color: 'var(--ios-red)', display: 'flex' }}>
-              <span style={{ fontSize: '20px', lineHeight: 1 }}>−</span>
-            </button>
-          </div>
-        ))}
-        {showAddStore ? (
-          <div style={{ display: 'flex', alignItems: 'center', padding: '8px 16px', gap: '8px', borderTop: favoriteStores.length > 0 ? '0.5px solid var(--ios-border)' : 'none', backgroundColor: '#fff' }}>
-            <input
-              type="text"
-              value={newStoreName}
-              onChange={e => setNewStoreName(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddStore(); } if (e.key === 'Escape') { setShowAddStore(false); setNewStoreName(''); } }}
-              placeholder="店舗名を入力"
-              autoFocus
-              className="ios-input"
-              style={{ flex: 1, fontSize: '14px' }}
-            />
-            <button onClick={handleAddStore} className="ios-btn" style={{ width: 'auto', padding: '0 14px', flexShrink: 0 }}>追加</button>
-            <button onClick={() => { setShowAddStore(false); setNewStoreName(''); }} style={{ border: 'none', background: 'none', color: 'var(--ios-text-secondary)', cursor: 'pointer', fontSize: '14px', padding: '4px' }}>×</button>
-          </div>
-        ) : (
-          <div
-            onClick={() => setShowAddStore(true)}
-            style={{ display: 'flex', alignItems: 'center', height: '52px', padding: '0 16px', cursor: 'pointer', backgroundColor: '#fff', borderTop: favoriteStores.length > 0 ? '0.5px solid var(--ios-border)' : 'none' }}
-          >
-            <span style={{ fontSize: '15px', color: 'var(--ios-primary)', fontWeight: '600' }}>+ 店舗を追加</span>
-          </div>
-        )}
-      </SettingsBlock>
-
-      {/* マイ定番商品セクション */}
-      <SectionHeader>マイ定番商品</SectionHeader>
-      <SettingsBlock>
-        <TapRow label="マイ定番商品を管理" last onClick={onNavigateToMyItems} />
+        <TapRow label="定番商品・よく行く店舗を管理" last onClick={onNavigateToMyItems} />
       </SettingsBlock>
 
       {/* データ管理セクション */}

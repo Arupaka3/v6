@@ -655,6 +655,7 @@ function App() {
       supabase.from('streaks').delete().eq('user_id', session.user.id),
       supabase.from('badges').delete().eq('user_id', session.user.id),
       supabase.from('my_items').delete().eq('user_id', session.user.id),
+      supabase.from('favorite_stores').delete().eq('user_id', session.user.id),
       supabase.from('user_settings').upsert({
         user_id: session.user.id,
         monthly_base_savings: 5000,
